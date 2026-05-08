@@ -96,12 +96,12 @@ Check whether `<output_dir>/Lauftagebuch/Lauftagebuch.md` exists. This file is w
 
 **If the index does not exist**, fall back to the API-based approach in Step 2b.
 
-### 2b — Runalyze API fallback
+### 2b — Runalyze FIT files fallback
 
 Run the fetch script:
 
 ```bash
-bash <skill-dir>/fetch-recent-runs.sh
+bash <skill-dir>/fetch-recent-runs.sh [count]   # count defaults to 5
 ```
 
 **Interpret the output:**
@@ -110,10 +110,26 @@ bash <skill-dir>/fetch-recent-runs.sh
 - First line `NO_TOKEN` → no Runalyze token configured.
   Ask the user to paste a summary of their **3–5 most recent runs** in any format
   (e.g. "2026-04-27, 14 km, 5:10/km, easy"). Parse whatever they provide.
-- First line `FETCH_MODE=runalyze` → success. Parse the JSON array after `---RUNS---`.
-  Each entry: `date`, `title`, `distance_km`, `duration_sec`, `avg_pace_sec_km`, `avg_hr`.
+- Otherwise: the script downloads each FIT file and runs `fit-analyzer` on it.
+  Output is one block per activity, separated by `---ACTIVITY---`:
 
-Note: API data lacks TE, Soll comparison, HR drift, and Reflexion. Treat pace and volume signals as approximate.
+  ```text
+  ---ACTIVITY---
+  ACTIVITY_ID=<id>	DATE=<YYYY-MM-DD>	TITLE=<title>	DIST_KM=<km>	DUR_SEC=<s>	DEST=<path>
+  ---FIT-ANALYZER---
+  <fit-analyzer YAML output>
+  ---ACTIVITY---
+  ...
+  ```
+
+  Parse each block the same way as `analyze-run` parses a single activity: extract session
+  record fields (distance, time, avg/max HR, cadence ×2, TE, vertical oscillation) and lap
+  records (pace per lap, HR per lap). Use these to build the same coaching signals as in 2a.
+
+Note: FIT-based data is just as rich as Lauftagebuch entries, but lacks the Soll comparison
+and Reflexion notes that `analyze-run` adds. If both sources are available, prefer Lauftagebuch
+entries for runs that have already been analyzed, and use FIT data for the most recent runs
+not yet in the Lauftagebuch.
 
 ---
 
