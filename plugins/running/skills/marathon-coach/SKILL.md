@@ -1,214 +1,292 @@
 ---
 name: marathon-coach
 description: >-
-  Marathon- und Halbmarathon-Coach. Erstellt und aktualisiert Trainingspläne basierend auf
-  historischen Laufdaten aus Runalyze. Gibt einen Überblick über den gesamten Trainingsblock
-  und einen detaillierten Wochenplan. Berücksichtigt Verletzungsrisiko, Trainingsbalance und
-  Zeitkontingente des Nutzers.
-argument-hint: "[new | update | status | hm | <freie Anweisung>]"
+  Marathon and half-marathon training coach. Creates and updates training plans based on
+  the user's fitness level, goals, and recent run history (Runalyze or manually provided).
+  Adapts to any experience level. Supports onboarding for new users.
+argument-hint: "[new | update | status | hm | <coaching question>]"
 ---
 
 # Marathon Coach
 
 **User arguments:** `$ARGUMENTS`
 
-- `new` — neuen Trainingsplan erstellen (Marathon oder Halbmarathon)
-- `update` — bestehenden Plan anpassen (z.B. nach Zeitplanänderung, Wettkampfergebnis, Verletzung)
-- `status` — aktuellen Trainingsstand auswerten
-- `hm` — Halbmarathon-Plan (sonst Standard: Marathon)
-- Freitext → Coaching-Frage, Anpassung oder Analyse
-
-**Zettelkasten base:** `/Users/D064028/Library/Mobile Documents/iCloud~md~obsidian/Documents/Zettelkasten`
-
-**Runalyze token:** `c0037730056b47843cd4e13da0df5520`
+- `new` — create a new training plan (marathon or half-marathon)
+- `update` — adjust an existing plan (schedule change, race result, injury)
+- `status` — assess current training state
+- `hm` — half-marathon plan (default: marathon)
+- Free text → coaching question, adjustment, or analysis
 
 ---
 
-## Coaching-Philosophie
+## Step 1 — Onboarding (first-time setup)
 
-Du bist ein ambitionierter Amateur-Läufer auf Niveau Marathonzeit ~3:06. Der Plan soll:
+Check whether `~/.marathon-coach/config.yaml` exists.
 
-- **Ambitioniert aber machbar** sein: Kein 4-Stunden-Training pro Tag. Typische Wochenbandbreite: 50–90 km je nach Phase.
-- **Verletzungsrisiko minimieren**: 10%-Regel für Kilometeraufbau. Regelmäßige Regenerationswochen (alle 3–4 Wochen). Kraft/Stabi als fester Bestandteil.
-- **Ausgewogen** sein: Polarisiertes Training (80% locker, 20% intensiv). Nie zwei intensive Einheiten aufeinanderfolgend.
-- **Jeden Lauf mit klarem Ziel** versehen: Der Läufer soll wissen, was er von jeder Einheit erwartet und warum sie im Plan steht.
+**If it does not exist**, run interactive onboarding:
 
-### Bekannte Muster (aus Trainingshistorie)
-- Intervalle werden tendenziell zu schnell gelaufen → Pace-Empfehlungen etwas großzügiger formulieren und explizit warnen
-- Kadenz aktuell ~162 spm → schrittweise Richtung 170–175 anstreben (nach Marathon 2026)
-- Shin Splint Anfälligkeit → Wochensprünge kontrollieren, Stabi-Übungen priorisieren
+Ask the user (in one message) for:
 
----
+1. **Name** — how to address them
+2. **Language** — `de` (German) or `en` (English); all subsequent output will use this language
+3. **Race type** — marathon or half-marathon
+4. **Race date** — target race date (YYYY-MM-DD)
+5. **Goal time** — HH:MM, or a descriptor like "finish", "sub-4h", "BQ"
+6. **Weekly hours** — max training hours per week (respecting life constraints)
+7. **Experience level** — `beginner` / `intermediate` / `advanced`
+   - beginner: first marathon / running < 2 years / < 30 km/week
+   - intermediate: 1–3 marathons / 30–60 km/week
+   - advanced: multiple marathons / 60+ km/week
+8. **Notes / constraints** — injuries, constraints, preferences (free text; may be empty)
+9. **Output directory** — base path where plan files will be written (e.g. `/path/to/Zettelkasten/Sport`)
+10. **Runalyze token** *(optional)* — API token for automatic run history; leave blank to enter run data manually
 
-## Workflow
+Once collected, write `~/.marathon-coach/config.yaml`:
 
-### Schritt 1 — Kontext laden
-
-Lies zunächst die relevanten Dateien, um den aktuellen Stand zu verstehen:
-
-```text
-Sport/Marathon/MARATHONPLÄNE.md           ← Planübersicht und Tempotabellen
-Sport/Lauftagebuch/Lauftagebuch.md        ← Laufindex (letzte Einträge für Form-Check)
+```yaml
+name: <name>
+language: <de|en>
+output_dir: <output_dir>
+runalyze_token: "<token or empty>"
+race_type: <marathon|half-marathon>
+race_date: <YYYY-MM-DD>
+goal_time: "<HH:MM or descriptor>"
+weekly_hours: <number>
+experience: <beginner|intermediate|advanced>
+notes: "<free text>"
 ```
 
-Wenn `$ARGUMENTS` `new` oder `update` enthält, lies zusätzlich die letzten **3–5 Lauftagebuch-Einträge** (neueste Dateien in `Sport/Lauftagebuch/`) für Formbewertung.
+Confirm the file was written and continue to the requested action.
 
-Wenn eine Runalyze-Abfrage sinnvoll ist (aktuellste Aktivitäten, noch nicht im Lauftagebuch), rufe die API ab:
+---
+
+## Step 2 — Load configuration and run history
+
+Read `~/.marathon-coach/config.yaml` and parse all fields.
+
+### 2a — Lauftagebuch (analyzed run entries)
+
+Check whether `<output_dir>/Lauftagebuch/Lauftagebuch.md` exists. This file is written by the
+`analyze-run` skill and is the richest source of training data — prefer it over raw API data.
+
+**If the index exists:**
+
+1. Read `<output_dir>/Lauftagebuch/Lauftagebuch.md` to get the list of recent entries.
+   Index row format: `| [[<filename>]] | <Type> | <distance> | <pace> | <avg_hr> | <TE> |`
+
+2. Read the **5 most recent entry files** in full. Each entry contains:
+   - **Kennzahlen**: actual distance, time, effective pace, HR avg/max, elevation, calories, Training Effect (TE)
+   - **Soll column** (if present): target distance, time, and pace from the plan — use this for compliance comparison
+   - **Laufqualität**: cadence, step length, vertical oscillation, stance time (when available)
+   - **Verlauf**: lap table showing pace and HR progression within the run
+   - **Reflexion**: subjective notes ("Was gut lief", "Was aufgefallen ist") — treat as qualitative signal
+   - **Kontext**: wiki-link back to the plan week file (e.g. `[[MarathonplanX/W8 – 20.04–26.04|Woche 8]]`)
+
+3. From these entries, extract the following signals for use in coaching logic:
+
+   | Signal | How to derive | Coaching use |
+   | --- | --- | --- |
+   | **Pace compliance** | actual pace vs. Soll pace per entry | Identify systematic over/under-effort |
+   | **TE trend** | Training Effect across last 5 runs | Rising → fitness building; plateau/drop → fatigue or staleness |
+   | **HR drift** | HR in first vs. second half of Verlauf laps | Cardiac drift signals fatigue or heat; flat = good aerobic shape |
+   | **Easy run HR** | avg HR on Jogging/Dauerlauf entries | Rising week-on-week at same pace = accumulated fatigue |
+   | **Volume last 7 / 14 days** | sum of distances from dates | Check 10% rule; inform regen week decision |
+   | **Cadence trend** | avg cadence across last 3–5 runs | Declining cadence = fatigue-related form breakdown |
+   | **Reflexion flags** | "Was aufgefallen ist" notes | Subjective fatigue, pain, or unusual effort — treat as injury signal |
+
+**If the index does not exist**, fall back to the API-based approach in Step 2b.
+
+### 2b — Runalyze API fallback
+
+Run the fetch script:
 
 ```bash
-curl -s -H "token: c0037730056b47843cd4e13da0df5520" \
-  "https://runalyze.com/api/v1/activity?limit=10" | python3 -m json.tool
+bash <skill-dir>/fetch-recent-runs.sh
 ```
 
-### Schritt 2 — Ziel und Kontext klären
+**Interpret the output:**
 
-Wenn `$ARGUMENTS` `new` enthält und der Nutzer kein explizites Zieldatum und Zielzeit genannt hat, frage nach:
-- Welcher Wettkampf? (Marathon / Halbmarathon)
-- Zieldatum
-- Zielzeit oder ambitioniertes Ziel
-- Zeitkontingent pro Woche (Tage, max. Dauer pro Einheit)
+- First line `NO_CONFIG` → config missing; jump back to Step 1.
+- First line `NO_TOKEN` → no Runalyze token configured.
+  Ask the user to paste a summary of their **3–5 most recent runs** in any format
+  (e.g. "2026-04-27, 14 km, 5:10/km, easy"). Parse whatever they provide.
+- First line `FETCH_MODE=runalyze` → success. Parse the JSON array after `---RUNS---`.
+  Each entry: `date`, `title`, `distance_km`, `duration_sec`, `avg_pace_sec_km`, `avg_hr`.
 
-Ansonsten: Kontext aus vorhandenen Plan-Dateien und Lauftagebuch ableiten.
+Note: API data lacks TE, Soll comparison, HR drift, and Reflexion. Treat pace and volume signals as approximate.
 
-### Schritt 3 — Trainingsplan-Struktur entwerfen
+---
 
-#### Planübersicht (Makrozyklus)
+## Step 3 — Load plan context
 
-Erstelle einen **tabellarischen Überblick** aller Wochen von heute bis zum Wettkampf:
+Check for existing plan files under:
 
 ```text
-| Woche | Datum | Phase | Fokus | ~km | Intensiv |
+<output_dir>/Marathon/       (race_type = marathon)
+<output_dir>/Halbmarathon/   (race_type = half-marathon)
 ```
 
-**Phasen** (typisch für Marathon-Block 8–16 Wochen):
-- **Aufbau** (Woche 1–N): Kilometeraufbau, aerobe Basis, moderate Intensität
-- **Entwicklung** (mittlerer Block): Spezifische Tempoarbeit (Schwelle, Marathon-Pace), langer Läufe auf Wettkampflänge
-- **Peak** (1–2 Wochen): Höchste Belastung, letztes Rennsimulations-Training
-- **Taper** (2–3 Wochen): Reduktion Volumen, Erhalt Intensität, Frische aufbauen
+**If a plan exists:**
 
-Passe Phasenlängen dem verfügbaren Zeitfenster an.
+1. Read the plan index file to get the macrocycle table (all weeks, phases, km targets).
+2. Determine the current week by matching today's date to the week date ranges.
+3. Read the current week file to see planned sessions and targets.
+4. For `update` or `status`: also read the **2 previous week files** to understand the recent load trajectory.
 
-#### Prinzipien für Wochenstruktur
+**Cross-reference plan with Lauftagebuch** (when both exist):
 
-Typische Wochenmuster (anpassbar je nach Wochentagen des Läufers):
+- Follow each entry's Kontext wiki-link back to its plan week file to match actual vs. planned sessions.
+- Identify missed sessions, substitutions, or extra runs not in the plan.
+- Flag: sessions done significantly off-pace (>15 s/km from Soll), TE below target for key workouts,
+  or consecutive entries showing HR drift — these indicate the plan may need adjustment.
 
-```text
-Mo: Ruhetag oder Stabi/Kraft
-Di: Intensive Einheit (Intervall / Tempo)
-Mi: Locker (Jogging / Dauerlauf)
-Do: Mittlere Einheit (Dauerlauf oder Flotter DL)
-Fr: Locker oder Ruhetag
-Sa: Kurzer Lauf oder Flotter DL
-So: Langer Dauerlauf
-```
+**If no plan exists** (first `new` invocation): skip this step.
 
-Immer: Zwischen zwei intensiven Einheiten mind. **1 Ruhe- oder Locker-Tag**.
+---
 
-**Regenerationswochen** (alle 3–4 Wochen): Volumen auf ~65–70% der Vorwoche reduzieren.
+## Step 4 — Coaching logic
 
-#### Tempovorgaben
+### Experience-level calibration
 
-Leite Tempo-Zonen aus der Zielzeit ab (ähnlich zu MARATHONPLÄNE.md):
+Adapt all volume, intensity, and pace targets to the user's experience level:
 
-| Einheit | Formel | Beispiel 3:06 |
+| | beginner | intermediate | advanced |
+| --- | --- | --- | --- |
+| Weekly km peak | 30–50 km | 50–75 km | 75–110 km |
+| Long run max | 28 km | 32 km | 36 km |
+| Intense sessions / week | 1 | 1–2 | 2 |
+| Regen week cycle | every 3 weeks | every 3–4 weeks | every 4 weeks |
+| Taper length | 3 weeks | 2–3 weeks | 2 weeks |
+| Max single session | 2:30 h | 3:00 h | 3:30 h |
+
+Also cap all sessions at `weekly_hours / 5` per day (rough daily budget).
+
+### Pace zones (derived from goal time)
+
+For marathon (distance = 42.195 km) or half-marathon (21.098 km):
+
+| Session type | Formula | Example 4:00 marathon |
 | --- | --- | --- |
-| Marathontempo | Zielzeit / 42,195 | 4:25 /km |
-| Langer DL | MT + 60–80 sek | 5:25–5:40 |
-| Dauerlauf | MT + 50–70 sek | 5:15–5:35 |
-| Jogging | MT + 75–90 sek | 5:40–5:55 |
-| Flotter DL | MT + 15–20 sek | 4:40–4:45 |
-| Schwellentempo | 10km-Pace + 5–10 sek | ~4:35–4:40 |
-| 1000m Intervalle | 10km-Pace − 10 sek | ~3:58–4:05 |
+| Race pace (RP) | goal_time_sec / distance_km | 5:41 /km |
+| Long run | RP + 60–90 s | 6:41–7:11 |
+| Easy run | RP + 75–90 s | 6:56–7:11 |
+| Moderate run | RP + 30–50 s | 6:11–6:31 |
+| Threshold | 10km pace + 5–10 s | RP − 30 s approx |
+| 1000m intervals | 10km pace − 10 s | RP − 60 s approx |
 
-### Schritt 4 — Detailplan für die aktuelle Woche
+For a descriptor goal ("finish", "sub-4h", "BQ"), convert to an estimated target time before calculating paces.
 
-Erstelle den detaillierten Plan für die **nächste / aktuelle Trainingswoche** mit:
+### Plan structure (macrocycle)
 
-- Jeder Tag mit Datum
-- Trainingseinheit mit **konkretem Ziel des Laufs** (1 Satz, warum diese Einheit)
-- Distanz oder Dauer + Zieltempo
-- Kraft/Stabi-Empfehlung (aus bestehendem Übungskatalog wenn vorhanden)
-
-**Jede Einheit bekommt ein explizites Ziel**, z.B.:
-- "Jogging 50' (5:50) — *Ziel: aktive Regeneration nach dem langen Lauf, Beine lockern*"
-- "5× 1.000m (4:00–4:05; TP 400m) — *Ziel: VO2max-Stimulus, Laufökonomie bei hoher Intensität verbessern*"
-- "Langer DL 28 km (5:25) — *Ziel: Fettstoffwechsel und Marathon-spezifische Ermüdungstoleranz trainieren*"
-
-### Schritt 5 — Plan-Dateien schreiben
-
-#### Marathon-Plan
-
-Lege Wochendateien an unter:
+Create a tabular overview from today to race day:
 
 ```text
-Sport/Marathon/<Planordner>/W<N> – DD.MM–DD.MM.md
+| Week | Dates | Phase | Focus | ~km | Intense |
 ```
 
-Format exakt wie vorhandene Wochen-Dateien (W1 – 02.03–08.03.md als Vorlage):
+Standard phases (adapt length to available weeks):
+
+- **Build** (first third): volume accumulation, aerobic base
+- **Development** (middle third): specific tempo work, race-pace runs, long runs near race distance
+- **Peak** (1–2 weeks): highest load, race simulation
+- **Taper** (2–3 weeks for marathon, 1–2 for half): volume reduction, maintain intensity
+
+### Weekly structure principles
+
+Typical 7-day pattern (adjust for the user's available days):
+
+```text
+Mon: Rest or strength/stability
+Tue: Intense session (intervals or tempo)
+Wed: Easy run
+Thu: Moderate run
+Fri: Easy or rest
+Sat: Short or moderate run
+Sun: Long run
+```
+
+Rules:
+- Never two intense sessions back-to-back (mandatory easy or rest day between them)
+- 10% rule: do not increase weekly volume > 10% from the prior week (except after a regen week)
+- Mandatory regen week: reduce volume to ~65–70% of prior week
+- Every session has an explicit goal (1 sentence stating why it is in the plan)
+- Respect weekly_hours and session duration caps from config
+
+---
+
+## Step 5 — Write plan files
+
+Write all files under `output_dir` from config (not a hardcoded path).
+
+### Directory layout
+
+```text
+<output_dir>/Marathon/<plan-slug>/           (marathon)
+<output_dir>/Halbmarathon/<plan-slug>/       (half-marathon)
+```
+
+Create directories as needed.
+
+### Weekly files
+
+```text
+W<N> – DD.MM–DD.MM.md
+```
+
+Template:
 
 ~~~markdown
 ---
-tags: [sport, marathon, plan, <plan-slug>]
+tags: [sport, <race_type>, plan, <plan-slug>]
 ---
 
-# WOCHE <N> (<Phase>) | DD.MM. – DD.MM.YYYY
+# WEEK <N> (<Phase>) | DD.MM – DD.MM.YYYY
 
-[[<PLANINDEX>|← Zurück zum Plan]]
+[[<plan-index-filename>|← Back to plan]]
 
-| Tag | Datum  | ~XX km         | Kraft/Stabi |
-| --- | ------ | -------------- | ----------- |
-| Mo  | DD.MM. | –              | ...         |
-| Di  | DD.MM. | Einheit (Ziel) | ...         |
+| Day | Date   | Session            | Strength |
+| --- | ------ | ------------------ | -------- |
+| Mon | DD.MM  | –                  |          |
+| Tue | DD.MM  | <session> (<pace>) |          |
 ...
 
 ---
 
-## Wochenziel
+## Weekly goal
 
-<1–2 Sätze zum Fokus der Woche>
+<1–2 sentences on the week's focus>
 
-## Einheitenziele
+## Session goals
 
-**Di – <Einheit>:** <Erklärung warum>
-**Do – <Einheit>:** <Erklärung warum>
-**So – <Einheit>:** <Erklärung warum>
+**Tue – <session>:** <why this session>
+**Sun – <session>:** <why this session>
 ~~~
 
-#### Halbmarathon-Plan
+### Plan index file
 
-Lege Dateien an unter:
+`<plan-slug>/<plan-slug>.md` — contains pace overview, macrocycle table, and links to all week files.
 
-```text
-Sport/Halbmarathon/<Planordner>/W<N> – DD.MM–DD.MM.md
-```
-
-Gleiche Struktur wie Marathon. Falls `Sport/Halbmarathon/` noch nicht existiert, erstelle das Verzeichnis.
-
-#### Plan-Indexdatei
-
-Falls neu: Erstelle (oder aktualisiere) eine Indexdatei `<Planordner>/<PLANNAME>.md` mit:
-- Tempoübersicht
-- Tabelle aller Wochen (Makrozyklus-Übersicht)
-- Links zu Wochendateien
-
-### Schritt 6 — Coaching-Assessment in der Antwort
-
-Gib nach dem Schreiben der Dateien eine kurze Zusammenfassung:
-- Trainingsblock auf einen Blick (Wochen, Phasen, Peak-km)
-- Besonderheiten dieser Woche
-- Wichtigste Punkte zu Tempo und Verletzungsprävention
-- Konkrete Warnung wenn die Intervall-Beschleunigungstendenz relevant ist
+If the output directory appears to be an Obsidian vault (contains `[[` links in existing files), use wiki-link format `[[filename]]` for internal references. Otherwise use regular markdown links.
 
 ---
 
-## Wichtige Regeln
+## Step 6 — Coaching summary in the response
 
-- **Nie zwei intensive Einheiten hintereinander** (Di+Mi oder ähnliches verboten)
-- **10%-Regel**: Wochenkilometer nicht um mehr als 10% steigern (außer nach Regenerationswoche)
-- **Regenerationswoche** alle 3–4 Wochen verpflichtend
-- **Taper**: letzte 2–3 Wochen vor Wettkampf Volumen reduzieren, Intensität halten
-- **Intervall-Warnung**: Bei jedem Intervall-Training explizit auf Pace-Disziplin hinweisen (Tendenz: zu schnell anlaufen)
-- **Zeitkontingent**: Wenn der Läufer Zeitlimits nennt, diese respektieren — kein Workout > 3 Stunden
-- **Verweise auf Übungen**: bestehende Übungs-Links aus dem Zettelkasten verwenden (`[[Übung - ...]]`, `[[Prehab - ...]]`)
-- **Deutsche Sprache** durchgängig, Komma als Dezimaltrennzeichen
-- **Nicht fragen vor dem Schreiben**: Dateien direkt anlegen und dann das Ergebnis zusammenfassen
+After writing files, provide a brief summary:
+
+- Training block at a glance (weeks, phases, peak km/week)
+- Current week highlights
+- Key pace and injury-prevention points
+- Any flags from the user's notes (injury history, time constraints)
+
+---
+
+## Core coaching rules (always apply regardless of experience level)
+
+- Never two intense sessions back-to-back
+- 10% weekly volume rule (skip after regen weeks)
+- Mandatory regen weeks per cycle
+- Taper: reduce volume in final weeks, maintain intensity
+- Every run has an explicit stated goal
+- Respect session duration caps from config
+- Do not ask before writing plan files — write directly, then summarize
