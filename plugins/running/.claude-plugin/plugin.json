@@ -1,0 +1,11 @@
+{
+  "name": "running",
+  "version": "0.1.0",
+  "description": "Analyze runs from Runalyze and manage marathon/half-marathon training plans in Obsidian.",
+  "author": {
+    "name": "k15r"
+  },
+  "repository": "https://github.com/k15r/k15rhub",
+  "license": "MIT",
+  "keywords": ["running", "marathon", "runalyze", "training", "obsidian"]
+}
