@@ -121,6 +121,18 @@ Use this exact template:
 tags: [sport, lauf, <type_lowercase>, lauftagebuch]
 date: YYYY-MM-DD
 sport: running
+distanz_km: X.XX
+dauer: "H:MM:SS"
+pace: "M:SS"
+hf_avg: XXX
+hf_max: XXX
+hoehenmeter_auf: XX
+hoehenmeter_ab: XX
+kalorien: XXXX
+training_effect: X.X
+typ: <type_lowercase>
+planwoche: W<N>
+isowoche: KW<NN>
 ---
 
 # <Type> – DD.MM.YYYY (<Context>)
@@ -182,6 +194,11 @@ XXXm                                                                            
 ~~~
 
 **Notes on filling the template:**
+- `distanz_km`: 2 decimal places (e.g., 8.64)
+- `dauer`: total elapsed time as `"H:MM:SS"` (quoted string)
+- `pace`: effective pace as `"M:SS"` (quoted string, exclude "Uhr nicht gestoppt" laps)
+- `planwoche`: current plan week (e.g., W10); omit for free runs
+- `isowoche`: ISO calendar week as `KW<NN>` (e.g., KW19); always set
 - Omit the "Soll" column for free runs (no plan context)
 - Omit the `> Erklärung...` blockquote if no anomalies exist
 - For "Uhr nicht gestoppt": note which laps (e.g., "Laps 17–18 = Uhr nicht gestoppt")
