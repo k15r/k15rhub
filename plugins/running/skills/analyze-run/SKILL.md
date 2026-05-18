@@ -240,7 +240,22 @@ Append a row to the table in `<output_dir>/Lauftagebuch/Lauftagebuch.md`:
 
 Insert it in chronological order (by date).
 
-### Step 7 — Compare with training plan and add assessment
+### Step 7 — Back-link the plan entry
+
+If this run matched a planned workout (i.e. `current_plan` is set and a matching day/session was found in the weekly plan file):
+
+Open the week file `<output_dir>/Marathon/<current_plan>/W<N> – DD.MM–DD.MM.md` and find the table row for the matching day (e.g. the `| Mi |` row). Append a wiki-link to the Lauftagebuch entry at the end of the Session cell:
+
+```markdown
+| Mi | DD.MM  | Dauerlauf (5:15) → [[Lauftagebuch/2026-05-14 Dauerlauf W10 Mi\|✓]] |  |
+```
+
+- Use `→ [[Lauftagebuch/<filename without .md>\|✓]]` as the link (the `✓` is the display text)
+- Insert after the existing session text, separated by a space
+- Do not modify any other rows or content in the file
+- Skip this step for free runs (no plan context)
+
+### Step 8 — Compare with training plan and add assessment
 
 After writing the note, provide a brief coaching assessment in your response (not in the note):
 - Was the pace/HR appropriate for the workout type?
