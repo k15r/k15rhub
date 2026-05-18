@@ -280,10 +280,10 @@ tags: [sport, <race_type>, plan, <plan-slug>]
 
 [[<plan-index-filename>|← Back to plan]]
 
-| Day | Date   | Session            | Strength |
-| --- | ------ | ------------------ | -------- |
-| Mon | DD.MM  | –                  |          |
-| Tue | DD.MM  | <session> (<pace>) |          |
+| Day | Date   | Session            | Strength | Log |
+| --- | ------ | ------------------ | -------- | --- |
+| Mon | DD.MM  | –                  |          |     |
+| Tue | DD.MM  | <session> (<pace>) |          |     |
 ...
 
 ---

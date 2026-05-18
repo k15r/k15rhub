@@ -244,14 +244,14 @@ Insert it in chronological order (by date).
 
 If this run matched a planned workout (i.e. `current_plan` is set and a matching day/session was found in the weekly plan file):
 
-Open the week file `<output_dir>/Marathon/<current_plan>/W<N> – DD.MM–DD.MM.md` and find the table row for the matching day (e.g. the `| Mi |` row). Append a wiki-link to the Lauftagebuch entry at the end of the Session cell:
+Open the week file `<output_dir>/Marathon/<current_plan>/W<N> – DD.MM–DD.MM.md` and find the table row for the matching day (e.g. the `| Mi |` row). Write a wiki-link to the Lauftagebuch entry into the `Log` column (last column) of that row:
 
 ```markdown
-| Mi | DD.MM  | Dauerlauf (5:15) → [[Lauftagebuch/2026-05-14 Dauerlauf W10 Mi\|✓]] |  |
+| Mi | DD.MM  | Dauerlauf (5:15) |  | [[Lauftagebuch/2026-05-14 Dauerlauf W10 Mi\|✓]] |
 ```
 
-- Use `→ [[Lauftagebuch/<filename without .md>\|✓]]` as the link (the `✓` is the display text)
-- Insert after the existing session text, separated by a space
+- Use `[[Lauftagebuch/<filename without .md>\|✓]]` as the link (the `✓` is the display text)
+- Write into the Log column only — do not modify the Session cell or any other content
 - Do not modify any other rows or content in the file
 - Skip this step for free runs (no plan context)
 
