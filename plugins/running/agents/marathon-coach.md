@@ -316,7 +316,7 @@ After writing files, report back to the skill with a brief summary:
 
 If you created a new plan or activated an existing one, output its slug on its own line at the end of your response:
 
-```
+```text
 PLAN_SLUG: <plan-slug>
 ```
 
