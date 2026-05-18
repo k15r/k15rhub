@@ -1,8 +1,8 @@
-# huskhub — Claude Code Instructions
+# k15rhub — Claude Code Instructions
 
 ## Content
 
-This repository is a Claude Code plugin marketplace. It hosts plugins (skills, agents, hooks) that can be installed via `/plugin marketplace update huskhub`.
+This repository is a Claude Code plugin marketplace. It hosts plugins (skills, agents, hooks) that can be installed via `/plugin marketplace update k15rhub`.
 
 ## Style
 
@@ -19,16 +19,16 @@ Claude Code re-syncs the marketplace directory from the remote on restart, so co
 ```bash
 # Look up the version Claude Code currently knows about
 version=$(jq -r '.plugins[] | select(.name=="<name>") .version' \
-  ~/.claude/plugins/marketplaces/huskhub/.claude-plugin/marketplace.json)
+  ~/.claude/plugins/marketplaces/k15rhub/.claude-plugin/marketplace.json)
 
 # Replace that version's cache with your working copy
-rm -rf ~/.claude/plugins/cache/huskhub/<name>/$version/
-cp -R plugins/<name>/ ~/.claude/plugins/cache/huskhub/<name>/$version/
+rm -rf ~/.claude/plugins/cache/k15rhub/<name>/$version/
+cp -R plugins/<name>/ ~/.claude/plugins/cache/k15rhub/<name>/$version/
 ```
 
 Then restart Claude Code and invoke the skill to verify. Repeat the two commands after each edit — no version bump needed during development.
 
-When you are done testing, bump the version, commit, push, and run `/plugin marketplace update huskhub` to publish.
+When you are done testing, bump the version, commit, push, and run `/plugin marketplace update k15rhub` to publish.
 
 ## Before committing plugin changes
 
@@ -38,4 +38,4 @@ When you are done testing, bump the version, commit, push, and run `/plugin mark
 4. **Update the version** in `.claude-plugin/marketplace.json` for the same plugin.
 5. Commit both the plugin files and the version bump together.
 
-The plugin cache is keyed by version — without a bump, consumers won't pick up new files after running `/plugin marketplace update huskhub`.
+The plugin cache is keyed by version — without a bump, consumers won't pick up new files after running `/plugin marketplace update k15rhub`.
