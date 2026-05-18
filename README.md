@@ -28,7 +28,7 @@ The installed skills will be available as `/running:marathon-coach` and `/runnin
 
 | Plugin | Description | Version |
 | --- | --- | --- |
-| **running** | Analyze runs from Runalyze and manage marathon/half-marathon training plans in Obsidian. | 0.6.0 |
+| **running** | Analyze runs from Runalyze and manage marathon/half-marathon training plans in Obsidian. | 0.7.0 |
 
 ## Updating
 

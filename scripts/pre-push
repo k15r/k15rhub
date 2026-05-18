@@ -1,58 +1,73 @@
 #!/usr/bin/env bash
-# pre-push: enforce semver version bump in plugin.json before every push
+# pre-push: enforce semver version bump and cross-file consistency before every push
 #
-# Fires for every `git push`. If plugin.json changed in any commit being
-# pushed, the staged version must be strictly greater than the remote version.
+# Fires for every `git push`. Checks:
+# 1. If any plugin file changed, plugin.json version must be strictly bumped.
+# 2. plugin.json and marketplace.json versions must match at HEAD.
 
 set -euo pipefail
 
 PLUGIN_JSON="plugins/running/.claude-plugin/plugin.json"
+MARKETPLACE_JSON=".claude-plugin/marketplace.json"
 semver_re='^([0-9]+)\.([0-9]+)\.([0-9]+)$'
+
+extract_version() {
+  git show "$1:$2" 2>/dev/null \
+    | grep '"version"' \
+    | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' \
+    | head -1 \
+    || echo "0.0.0"
+}
 
 # pre-push receives lines: <local-ref> <local-sha> <remote-ref> <remote-sha>
 while read -r local_ref local_sha remote_ref remote_sha; do
-  # New branch push — remote_sha is all zeros
   if [[ "$remote_sha" =~ ^0+$ ]]; then
     range="$local_sha"
-    old_version="0.0.0"
+    old_plugin_version="0.0.0"
   else
     range="$remote_sha..$local_sha"
-    old_version=$(git show "$remote_sha:$PLUGIN_JSON" 2>/dev/null \
-      | grep '"version"' \
-      | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' \
-      || echo "0.0.0")
+    old_plugin_version=$(extract_version "$remote_sha" "$PLUGIN_JSON")
   fi
 
-  # Did plugin.json change in any of the commits being pushed?
+  # Check 1: if plugin.json changed, version must be bumped
   changed=$(git diff --name-only "$range" -- "$PLUGIN_JSON" 2>/dev/null || true)
-  [[ -n "$changed" ]] || continue
+  if [[ -n "$changed" ]]; then
+    new_version=$(extract_version "$local_sha" "$PLUGIN_JSON")
 
-  # Current local version
-  new_version=$(git show "$local_sha:$PLUGIN_JSON" 2>/dev/null \
-    | grep '"version"' \
-    | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+    [[ "$new_version" =~ $semver_re ]] || {
+      echo "ERROR: version \"$new_version\" in $PLUGIN_JSON is not valid semver (MAJOR.MINOR.PATCH)." >&2
+      exit 1
+    }
+    new_major="${BASH_REMATCH[1]}"; new_minor="${BASH_REMATCH[2]}"; new_patch="${BASH_REMATCH[3]}"
 
-  [[ "$new_version" =~ $semver_re ]] || {
-    echo "ERROR: version \"$new_version\" in $PLUGIN_JSON is not valid semver (MAJOR.MINOR.PATCH)." >&2
-    exit 1
-  }
-  new_major="${BASH_REMATCH[1]}"; new_minor="${BASH_REMATCH[2]}"; new_patch="${BASH_REMATCH[3]}"
+    [[ "$old_plugin_version" =~ $semver_re ]] || old_plugin_version="0.0.0"
+    [[ "$old_plugin_version" =~ $semver_re ]]
+    old_major="${BASH_REMATCH[1]}"; old_minor="${BASH_REMATCH[2]}"; old_patch="${BASH_REMATCH[3]}"
 
-  [[ "$old_version" =~ $semver_re ]] || old_version="0.0.0"
-  [[ "$old_version" =~ $semver_re ]]
-  old_major="${BASH_REMATCH[1]}"; old_minor="${BASH_REMATCH[2]}"; old_patch="${BASH_REMATCH[3]}"
+    if   (( new_major > old_major )); then :
+    elif (( new_major == old_major && new_minor > old_minor )); then :
+    elif (( new_major == old_major && new_minor == old_minor && new_patch > old_patch )); then :
+    else
+      echo "ERROR: $PLUGIN_JSON was modified but version was not bumped." >&2
+      echo "       Remote: $old_plugin_version  Local: $new_version" >&2
+      echo "       Bump MAJOR (breaking), MINOR (feature), or PATCH (fix) and commit before pushing." >&2
+      exit 1
+    fi
 
-  if   (( new_major > old_major )); then :
-  elif (( new_major == old_major && new_minor > old_minor )); then :
-  elif (( new_major == old_major && new_minor == old_minor && new_patch > old_patch )); then :
-  else
-    echo "ERROR: $PLUGIN_JSON was modified but version was not bumped." >&2
-    echo "       Remote: $old_version  Local: $new_version" >&2
-    echo "       Bump MAJOR (breaking), MINOR (feature), or PATCH (fix) and commit before pushing." >&2
+    echo "Version bump OK: $old_plugin_version → $new_version"
+  fi
+
+  # Check 2: plugin.json and marketplace.json must agree at the tip being pushed
+  plugin_ver=$(extract_version "$local_sha" "$PLUGIN_JSON")
+  market_ver=$(extract_version "$local_sha" "$MARKETPLACE_JSON")
+
+  if [[ "$plugin_ver" != "$market_ver" ]]; then
+    echo "ERROR: version mismatch between $PLUGIN_JSON ($plugin_ver) and $MARKETPLACE_JSON ($market_ver)." >&2
+    echo "       Keep both files in sync before pushing." >&2
     exit 1
   fi
 
-  echo "Version bump OK: $old_version → $new_version"
+  echo "Version consistency OK: plugin.json == marketplace.json == $plugin_ver"
 done
 
 exit 0
