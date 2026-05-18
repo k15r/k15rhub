@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# pre-push: enforce semver version bump in plugin.json before every push
+#
+# Fires for every `git push`. If plugin.json changed in any commit being
+# pushed, the staged version must be strictly greater than the remote version.
+
+set -euo pipefail
+
+PLUGIN_JSON="plugins/running/.claude-plugin/plugin.json"
+semver_re='^([0-9]+)\.([0-9]+)\.([0-9]+)$'
+
+# pre-push receives lines: <local-ref> <local-sha> <remote-ref> <remote-sha>
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # New branch push — remote_sha is all zeros
+  if [[ "$remote_sha" =~ ^0+$ ]]; then
+    range="$local_sha"
+    old_version="0.0.0"
+  else
+    range="$remote_sha..$local_sha"
+    old_version=$(git show "$remote_sha:$PLUGIN_JSON" 2>/dev/null \
+      | grep '"version"' \
+      | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' \
+      || echo "0.0.0")
+  fi
+
+  # Did plugin.json change in any of the commits being pushed?
+  changed=$(git diff --name-only "$range" -- "$PLUGIN_JSON" 2>/dev/null || true)
+  [[ -n "$changed" ]] || continue
+
+  # Current local version
+  new_version=$(git show "$local_sha:$PLUGIN_JSON" 2>/dev/null \
+    | grep '"version"' \
+    | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+
+  [[ "$new_version" =~ $semver_re ]] || {
+    echo "ERROR: version \"$new_version\" in $PLUGIN_JSON is not valid semver (MAJOR.MINOR.PATCH)." >&2
+    exit 1
+  }
+  new_major="${BASH_REMATCH[1]}"; new_minor="${BASH_REMATCH[2]}"; new_patch="${BASH_REMATCH[3]}"
+
+  [[ "$old_version" =~ $semver_re ]] || old_version="0.0.0"
+  [[ "$old_version" =~ $semver_re ]]
+  old_major="${BASH_REMATCH[1]}"; old_minor="${BASH_REMATCH[2]}"; old_patch="${BASH_REMATCH[3]}"
+
+  if   (( new_major > old_major )); then :
+  elif (( new_major == old_major && new_minor > old_minor )); then :
+  elif (( new_major == old_major && new_minor == old_minor && new_patch > old_patch )); then :
+  else
+    echo "ERROR: $PLUGIN_JSON was modified but version was not bumped." >&2
+    echo "       Remote: $old_version  Local: $new_version" >&2
+    echo "       Bump MAJOR (breaking), MINOR (feature), or PATCH (fix) and commit before pushing." >&2
+    exit 1
+  fi
+
+  echo "Version bump OK: $old_version → $new_version"
+done
+
+exit 0

@@ -28,7 +28,7 @@ The installed skills will be available as `/running:marathon-coach` and `/runnin
 
 | Plugin | Description | Version |
 | --- | --- | --- |
-| **running** | Analyze runs from Runalyze and manage marathon/half-marathon training plans in Obsidian. | 0.1.0 |
+| **running** | Analyze runs from Runalyze and manage marathon/half-marathon training plans in Obsidian. | 0.6.0 |
 
 ## Updating
 
@@ -62,7 +62,17 @@ Plugins live in `plugins/<name>/` and must contain:
         └── SKILL.md       # Skill definition with YAML frontmatter
 ```
 
-After adding or modifying a plugin, register it in `.claude-plugin/marketplace.json` and bump the version in both `marketplace.json` and `plugin.json`. The pre-commit lint hook enforces version consistency.
+After adding or modifying a plugin, register it in `.claude-plugin/marketplace.json` and bump the version in both `marketplace.json` and `plugin.json`. The pre-push hook enforces this automatically.
+
+## Development Setup
+
+After cloning, install the git hooks:
+
+```bash
+bash scripts/install-hooks.sh
+```
+
+This installs a `pre-push` hook that blocks pushes where `plugin.json` was modified but the version was not bumped to a higher semver value.
 
 ## License
 
