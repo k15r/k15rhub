@@ -2,9 +2,9 @@
 # fetch-fit.sh — download a Runalyze FIT file for the analyze-run skill
 #
 # Usage:
-#   fetch-fit.sh                    # latest running activity
-#   fetch-fit.sh <activity-id>      # specific numeric ID
-#   fetch-fit.sh <YYYY-MM-DD>       # first running activity on that date
+#   fetch-fit.sh <user>                    # latest running activity
+#   fetch-fit.sh <user> <activity-id>      # specific numeric ID
+#   fetch-fit.sh <user> <YYYY-MM-DD>       # first running activity on that date
 #
 # Output (stdout, tab-separated on one line):
 #   <activity_id>\t<date>\t<title>\t<distance_km>\t<duration_sec>\t<dest_path>
@@ -14,9 +14,6 @@
 
 set -euo pipefail
 
-TOKEN_FILE="$HOME/.runalyze-token"
-ZETTELKASTEN="/Users/D064028/Library/Mobile Documents/iCloud~md~obsidian/Documents/Zettelkasten"
-FIT_DIR="$ZETTELKASTEN/Sport/Lauftagebuch/fit"
 API="https://runalyze.com/api/v1"
 
 # ---------------------------------------------------------------------------
@@ -27,10 +24,31 @@ die() {
   exit 1
 }
 
-command -v fit-analyzer >/dev/null 2>&1 || die "fit-analyzer not found. Install it from https://github.com/k15r/fit-analyzer"
+read_yaml_field() {
+  local file="$1" field="$2"
+  grep "^${field}:" "$file" | head -1 | sed "s/^${field}: *//" | tr -d '"' | tr -d "'"
+}
 
-[[ -f "$TOKEN_FILE" ]] || die "Token file not found: $TOKEN_FILE"
-TOKEN=$(cat "$TOKEN_FILE")
+# ---------------------------------------------------------------------------
+# Step 0 — resolve user and config
+# ---------------------------------------------------------------------------
+USER_ARG="${1:-}"
+ARG="${2:-}"
+
+[[ -n "$USER_ARG" ]] || die "Usage: fetch-fit.sh <user> [activity-id|YYYY-MM-DD]"
+
+CONFIG="$HOME/.marathon-coach/$USER_ARG/config.yaml"
+[[ -f "$CONFIG" ]] || die "Config not found: $CONFIG"
+
+TOKEN=$(read_yaml_field "$CONFIG" runalyze_token)
+[[ -n "$TOKEN" ]] || die "runalyze_token not set in $CONFIG"
+
+OUTPUT_DIR=$(read_yaml_field "$CONFIG" output_dir)
+[[ -n "$OUTPUT_DIR" ]] || die "output_dir not set in $CONFIG"
+
+FIT_DIR="$OUTPUT_DIR/Lauftagebuch/fit"
+
+command -v fit-analyzer >/dev/null 2>&1 || die "fit-analyzer not found. Install it from https://github.com/k15r/fit-analyzer"
 
 auth_curl() { curl -sf -H "token: $TOKEN" "$@"; }
 
@@ -43,7 +61,6 @@ fmt_duration() {
 # ---------------------------------------------------------------------------
 # Step 1 — resolve activity
 # ---------------------------------------------------------------------------
-ARG="${1:-}"
 ACTIVITY_ID=""
 DATE=""
 TITLE=""

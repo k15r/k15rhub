@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # fetch-recent-runs.sh — download recent FIT files and run fit-analyzer for the marathon-coach skill
 #
-# Reads ~/.marathon-coach/config.yaml for the Runalyze token and output_dir.
+# Reads ~/.marathon-coach/<user>/config.yaml for the Runalyze token and output_dir.
 # If no token is configured, prints NO_TOKEN and exits 0.
 # If no config exists, prints NO_CONFIG and exits 0.
 #
 # Usage:
-#   fetch-recent-runs.sh [count]   # default: 5 most recent running activities
+#   fetch-recent-runs.sh <user> [count]   # default: 5 most recent running activities
 #
 # Output (stdout) per activity:
 #   ---ACTIVITY---
@@ -18,9 +18,7 @@
 
 set -euo pipefail
 
-CONFIG="$HOME/.marathon-coach/config.yaml"
 API="https://runalyze.com/api/v1"
-COUNT="${1:-5}"
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -31,6 +29,16 @@ read_yaml_field() {
     local file="$1" field="$2"
     grep "^${field}:" "$file" | head -1 | sed "s/^${field}: *//" | tr -d '"' | tr -d "'"
 }
+
+# ---------------------------------------------------------------------------
+# Step 0 — resolve user and config
+# ---------------------------------------------------------------------------
+USER_ARG="${1:-}"
+COUNT="${2:-5}"
+
+[[ -n "$USER_ARG" ]] || die "Usage: fetch-recent-runs.sh <user> [count]"
+
+CONFIG="$HOME/.marathon-coach/$USER_ARG/config.yaml"
 
 # ---------------------------------------------------------------------------
 # Check prerequisites

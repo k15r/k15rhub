@@ -5,26 +5,43 @@ description: >-
   analyzes it with fit-analyzer, compares it against the marathon training plan, and writes a
   standardized Lauftagebuch entry to the Zettelkasten. Use this skill after a run to document
   it automatically.
-argument-hint: "[optional: Runalyze activity ID or date YYYY-MM-DD — default: latest activity]"
+argument-hint: "[user=<name>] [optional: Runalyze activity ID or date YYYY-MM-DD — default: latest activity]"
 ---
 
 # Analyze Run
 
-**User arguments:** `$ARGUMENTS` — optional Runalyze activity ID or date (YYYY-MM-DD). Default: fetch the latest activity.
+**User arguments:** `$ARGUMENTS`
 
-**Zettelkasten base:** `/Users/D064028/Library/Mobile Documents/iCloud~md~obsidian/Documents/Zettelkasten`
+- `user=<name>` *(optional)* — which user's config to use
+- Remaining argument: optional Runalyze activity ID or date (YYYY-MM-DD). Default: fetch the latest activity.
 
 ---
 
-## Workflow
+## Step 0 — Resolve user
 
-### Step 1 — Fetch activity and FIT file
+1. Check if `$ARGUMENTS` starts with `user=<name>` — if so, extract `<name>` as `USER` and strip it from the remaining arguments (pass the rest as the activity argument in Step 1).
+2. If no `user=` argument:
+   a. List all subdirectories of `~/.marathon-coach/` that contain a `config.yaml`.
+   b. Exactly one found → use it without asking.
+   c. More than one found → ask: *"Für welchen User? [<list>]"* and wait for the answer.
+   d. None found → inform the user that no config exists yet and suggest running `/marathon-coach` first.
+3. Also check for a legacy flat config at `~/.marathon-coach/config.yaml` (no subdirectory). If found and no user-subdirectories exist, treat it as `USER=default` and note that migration to `~/.marathon-coach/default/config.yaml` is recommended.
+
+Set `CONFIG_DIR=~/.marathon-coach/<USER>/` and `CONFIG=<CONFIG_DIR>/config.yaml` for all subsequent steps.
+
+---
+
+## Step 1 — Fetch activity and FIT file
+
+Read `output_dir` and `current_plan` from `$CONFIG`.
 
 Run the fetch script (located in the same directory as this skill file):
 
 ```bash
-bash <skill-dir>/fetch-fit.sh $ARGUMENTS
+bash <skill-dir>/fetch-fit.sh $USER $ACTIVITY_ARGUMENT
 ```
+
+Where `$ACTIVITY_ARGUMENT` is the remaining argument after stripping `user=<name>` (may be empty → latest activity).
 
 The script checks that `fit-analyzer` is installed and exits with an error if not — install it from https://github.com/k15r/fit-analyzer
 
@@ -32,7 +49,7 @@ The script checks that `fit-analyzer` is installed and exits with an error if no
 - Numeric ID → that specific activity
 - `YYYY-MM-DD` → first running activity on that date
 
-The script handles: resolving the activity via the Runalyze API, downloading the FIT file via `/fit-original` to `Sport/Lauftagebuch/fit/`, running `fit-analyzer`, and printing everything to stdout.
+The script handles: resolving the activity via the Runalyze API, downloading the FIT file via `/fit-original` to `<output_dir>/Lauftagebuch/fit/`, running `fit-analyzer`, and printing everything to stdout.
 
 **Output format — first line:**
 
@@ -71,12 +88,17 @@ From the output above, extract:
 
 ### Step 3 — Determine workout type and context
 
-**Check the current training week** by reading the marathon plan index:
+Read `current_plan` from `$CONFIG`. If `current_plan` is set, load the plan index:
 
 ```text
-Sport/Marathon/Marathonplan 3-06/Marathonplan 3-06.md
+<output_dir>/Marathon/<current_plan>/<current_plan>.md
 ```
-Then read the current week's plan file (e.g., `W8 – 20.04–26.04.md`).
+
+(Use `<output_dir>/Halbmarathon/<current_plan>/<current_plan>.md` if `race_type = half-marathon`.)
+
+Then read the current week's plan file (e.g., `W8 – 20.04–26.04.md`) from the same directory.
+
+If `current_plan` is empty or the file does not exist, treat this as a free run (no plan context).
 
 Determine the run type based on:
 - Duration and pace vs plan targets
@@ -111,7 +133,7 @@ From the weekly plan file, find the matching workout entry (by day/type) and not
 Create the note at:
 
 ```text
-Sport/Lauftagebuch/<filename>.md
+<output_dir>/Lauftagebuch/<filename>.md
 ```
 
 Use this exact template:
@@ -189,7 +211,7 @@ XXXm                                                                            
 
 ## Kontext
 
-- [[Marathonplan 3-06/W<N> – DD.MM–DD.MM|Woche <N>]] — <Wochentag> <Workout-Name>
+- [[<current_plan>/W<N> – DD.MM–DD.MM|Woche <N>]] — <Wochentag> <Workout-Name>
 - FIT-File: [[fit/<filename>.fit|<filename>.fit]]
 ~~~
 
@@ -206,10 +228,11 @@ XXXm                                                                            
 - Lap table: group consecutive laps with same pace tier as a range (e.g., "3–16")
 - Höhenprofil section: describe the elevation in natural language based on sparkline shape and min/max
 - If running dynamics are missing (no cadence/oscillation data), omit the Laufqualität section
+- Kontext link: use `current_plan` value from config for the wiki-link (e.g. `[[Marathonplan 3-06/W8 – 20.04–26.04|Woche 8]]`); omit for free runs
 
 ### Step 6 — Update the Lauftagebuch index
 
-Append a row to the table in `Sport/Lauftagebuch/Lauftagebuch.md`:
+Append a row to the table in `<output_dir>/Lauftagebuch/Lauftagebuch.md`:
 
 ```markdown
 | [[<filename without .md>]] | <Type> | XX,XX km | M:SS | XXX | X.X |
@@ -236,3 +259,4 @@ After writing the note, provide a brief coaching assessment in your response (no
 - **Soll distance**: calculate as `Soll_minutes / Soll_pace_per_km` (e.g., 85' at 5:25 = 85/5.417 ≈ 15,7 km).
 - **Training Effect**: from `training_effect` in session record (scale 0.0–5.0).
 - **Tags**: use lowercase type in frontmatter (jogging, dauerlauf, trail, rennen, intervall, tempo).
+- **current_plan**: always read from `$CONFIG` — never hardcode a plan name.

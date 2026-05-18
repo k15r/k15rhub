@@ -314,6 +314,14 @@ After writing files, report back to the skill with a brief summary:
 - Pace and injury-prevention points derived from `notes` in config
 - Any adjustments made relative to the original plan (for `update`)
 
+If you created a new plan or activated an existing one, output its slug on its own line at the end of your response:
+
+```
+PLAN_SLUG: <plan-slug>
+```
+
+The calling skill uses this to update `current_plan` in the user's config.
+
 ---
 
 ## Core rules (always apply)
