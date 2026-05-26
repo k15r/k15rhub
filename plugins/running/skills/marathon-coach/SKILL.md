@@ -5,6 +5,9 @@ description: >-
   the user's fitness level, goals, and recent run history (Runalyze or manually provided).
   Adapts to any experience level. Supports onboarding for new users.
 argument-hint: "[user=<name>] [new | update | status | hm | <coaching question>]"
+allowed-tools:
+  - Edit(./**)
+  - Edit(~/.marathon-coach/**)
 ---
 
 # Marathon Coach

@@ -6,6 +6,9 @@ description: >-
   standardized Lauftagebuch entry to the Zettelkasten. Use this skill after a run to document
   it automatically.
 argument-hint: "[user=<name>] [optional: Runalyze activity ID or date YYYY-MM-DD — default: latest activity]"
+allowed-tools:
+  - Edit(./**)
+  - Read(~/.marathon-coach/**)
 ---
 
 # Analyze Run
