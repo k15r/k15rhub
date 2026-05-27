@@ -81,7 +81,7 @@ elif [[ "$ARG" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
         .[]
         | select(
             (.date_time // "" | startswith($d)) and
-            (.sport.category // "" == "running") and
+            (.sport.name // "" | test("Laufen|Running"; "i")) and
             (.distance // 0 > 0.1)
           )
         | [.id, .date_time, .title // "", .distance, .duration]
@@ -97,7 +97,7 @@ else
   ROW=$(echo "$LIST" | jq -r '
         .[]
         | select(
-            (.sport.category // "" == "running") and
+            (.sport.name // "" | test("Laufen|Running"; "i")) and
             (.distance // 0 > 0.1) and
             (.date_time | startswith("203") | not)
           )

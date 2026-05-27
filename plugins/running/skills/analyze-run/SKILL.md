@@ -136,8 +136,10 @@ From the weekly plan file, find the matching workout entry (by day/type) and not
 Create the note at:
 
 ```text
-<output_dir>/Lauftagebuch/<filename>.md
+<output_dir>/Lauftagebuch/YYYY-MM/<filename>.md
 ```
+
+Where `YYYY-MM` is the year-month of the activity date (e.g. `2026-05`). Create the directory if it does not exist.
 
 Use this exact template:
 
@@ -157,6 +159,7 @@ kalorien: XXXX
 training_effect: X.X
 typ: <type_lowercase>
 planwoche: W<N>
+plan: "<current_plan>"
 isowoche: KW<NN>
 ---
 
@@ -223,6 +226,7 @@ XXXm                                                                            
 - `dauer`: total elapsed time as `"H:MM:SS"` (quoted string)
 - `pace`: effective pace as `"M:SS"` (quoted string, exclude "Uhr nicht gestoppt" laps)
 - `planwoche`: current plan week (e.g., W10); omit for free runs
+- `plan`: value of `current_plan` from config (e.g., `"HM-Plan 1-25"`); omit for free runs
 - `isowoche`: ISO calendar week as `KW<NN>` (e.g., KW19); always set
 - Omit the "Soll" column for free runs (no plan context)
 - Omit the `> Erklärung...` blockquote if no anomalies exist
@@ -238,7 +242,7 @@ XXXm                                                                            
 Append a row to the table in `<output_dir>/Lauftagebuch/Lauftagebuch.md`:
 
 ```markdown
-| [[<filename without .md>]] | <Type> | XX,XX km | M:SS | XXX | X.X |
+| [[YYYY-MM/<filename without .md>]] | <Type> | XX,XX km | M:SS | XXX | X.X |
 ```
 
 Insert it in chronological order (by date).
@@ -250,10 +254,10 @@ If this run matched a planned workout (i.e. `current_plan` is set and a matching
 Open the week file `<output_dir>/Marathon/<current_plan>/W<N> – DD.MM–DD.MM.md` and find the table row for the matching day (e.g. the `| Mi |` row). Write a wiki-link to the Lauftagebuch entry into the `Log` column (last column) of that row:
 
 ```markdown
-| Mi | DD.MM  | Dauerlauf (5:15) |  | [[Lauftagebuch/2026-05-14 Dauerlauf W10 Mi\|✓]] |
+| Mi | DD.MM  | Dauerlauf (5:15) |  | [[Lauftagebuch/YYYY-MM/2026-05-14 Dauerlauf W10 Mi\|✓]] |
 ```
 
-- Use `[[Lauftagebuch/<filename without .md>\|✓]]` as the link (the `✓` is the display text)
+- Use `[[Lauftagebuch/YYYY-MM/<filename without .md>\|✓]]` as the link (the `✓` is the display text)
 - Write into the Log column only — do not modify the Session cell or any other content
 - Do not modify any other rows or content in the file
 - Skip this step for free runs (no plan context)
