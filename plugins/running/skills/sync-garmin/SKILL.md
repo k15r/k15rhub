@@ -7,8 +7,10 @@ description: >-
   any time the plan and Garmin calendar are out of sync. Requires garmin_email in config.
 argument-hint: "[user=<name>] [week | plan] [optional: path to week YAML or plan dir]"
 allowed-tools:
+  - Read(./**)
   - Read(~/.marathon-coach/**)
   - Read(~/.garminconnect/**)
+  - Write(~/.garminconnect/**)
 ---
 
 # Sync Garmin
@@ -61,13 +63,20 @@ The `push-workouts-garmin.py` script lives alongside `analyze-activity` in the p
 
 **For a single week:**
 
-```bash
-# Delete previously scheduled workouts for each future session date in the week
-uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --delete-date <YYYY-MM-DD>
+1. Read the week YAML to identify all non-rest session dates that are strictly after today.
+2. For each such date, delete any previously scheduled workout:
 
-# Upload and schedule the week
+```bash
+uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --delete-date <YYYY-MM-DD>
+```
+
+3. Upload and schedule the full week:
+
+```bash
 uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --week <week-yaml-path>
 ```
+
+The `--week` command only uploads sessions whose date is today or later — past sessions in the file are skipped automatically.
 
 **For the full plan:**
 
@@ -75,9 +84,7 @@ uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --
 uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --plan <plan-dir-path>
 ```
 
-For single-week mode: run `--delete-date` for each non-rest session date that is strictly after today before calling `--week`. This ensures clean replacement.
-
-For plan mode: the script's `--plan` flag handles all future week files. Past weeks (whose end date is before today) are skipped automatically.
+For plan mode: the script skips weeks whose `dates.end` is before today and sessions whose date is not strictly after today.
 
 ---
 

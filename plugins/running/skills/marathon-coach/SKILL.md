@@ -2,11 +2,12 @@
 name: marathon-coach
 description: >-
   Running coach for any race distance. Creates and updates training plans based on
-  the user's fitness level, goals, and recent run history (Runalyze or manually provided).
-  Adapts to any experience level and race type (5k, 10k, half-marathon, marathon, ultramarathon).
-  Supports onboarding for new users.
+  the user's fitness level, goals, and recent activity history (Garmin Connect, Runalyze,
+  or manually provided). Adapts to any experience level and race type (5k, 10k,
+  half-marathon, marathon, ultramarathon). Supports onboarding for new users.
 argument-hint: "[user=<name>] [race=<type>] [new | update | status | sync | <coaching question>]"
 allowed-tools:
+  - Read(./**)
   - Edit(./**)
   - Write(./**)
   - Edit(~/.marathon-coach/**)
@@ -47,7 +48,7 @@ After resolving the user, parse the remaining arguments:
 
 1. If `race=<type>` appears, extract it and set `$RACE_TYPE_OVERRIDE = <type>`. Remove it from the remaining string.
 2. From what remains, identify `$ACTION`:
-   - `new`, `update`, or `status` → use as-is
+   - `new`, `update`, `status`, or `sync` → use as-is
    - Empty or blank → set `$ACTION = status`
    - Anything else → treat as a free-text coaching question
 
@@ -117,7 +118,8 @@ bash <skill-dir>/fetch-recent-activities.sh $USER [count]   # default: 5
 ```
 
 - `NO_CONFIG` → jump back to Step 1
-- `NO_TOKEN` → ask the user to paste a summary of their 3–5 most recent runs (any format); collect their reply
+- `NO_TOKEN` → no Runalyze token and no `garmin_email` configured; ask the user to paste a summary of their 3–5 most recent activities (any format) and collect their reply
+- Non-zero exit with an auth error message → Garmin token cache missing; tell the user to run `analyze-activity` once interactively to create it, then retry
 - Otherwise: collect the full script output (all `---ACTIVITY--- / ---FIT-ANALYZER---` blocks)
 
 ---

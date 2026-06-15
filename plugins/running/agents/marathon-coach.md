@@ -68,7 +68,7 @@ Each entry has these fields (all optional — omit missing ones from analysis):
 | --- | --- |
 | `pace` / `soll_pace` | Pace compliance: over/under-effort vs. plan |
 | `training_effect` (last 5) | TE trend: rising = fitness building; plateau/drop = fatigue |
-| `laps[].pace`, `laps[].hf_avg` | HR drift: compare first-half vs. second-half laps |
+| `hr_drift` | Pre-computed HR drift (second half − first half bpm); positive = fatigue signal; use `laps[].hf_avg` from full YAML if detail needed |
 | `hf_avg` on jogging/dauerlauf entries | Rising week-on-week at same pace = accumulated fatigue |
 | `distance_km` summed by week | Volume last 7/14 days; check progression cap |
 | `kadenz_avg` (last 3–5 runs) | Declining cadence = fatigue-related form breakdown |
@@ -291,7 +291,7 @@ This action rewrites the rolling 7-day window starting from tomorrow. Do not tou
 
 **1. Assess actual vs. planned load**
 
-From `TAGEBUCH_LAST_7_DAYS`, extract the same signals as Step 2 (TE trend, HR drift, cadence, Reflexion flags, total volume). Compare against the sessions planned in `CURRENT_WEEK_FILE` for the same days.
+From `ACTIVITY_HISTORY` (YAML), extract the coaching signals defined in Step 2. Compare against the sessions planned in `CURRENT_WEEK_YAML` for the same dates (match by `date` field).
 
 Derive a fatigue/freshness state:
 
@@ -418,38 +418,63 @@ Session type fields:
 
 `pace_range` is always `"M:SS–M:SS"` in min:sec per km. Never use descriptors like "HM-Pace" as the pace value — always resolve to actual min:sec. Use `label` for display only.
 
-**`W<N> – DD.MM–DD.MM.md`** — human-readable, derived from the YAML. Template:
+**`W<N> – DD.MM–DD.MM.md`** — human-readable, derived from the YAML. Use the language from config (`de` or `en`) for all headings and labels. German template:
 
 ~~~markdown
 ---
 tags: [sport, <race_type>, plan, <plan-slug>]
 ---
 
-# WEEK <N> (<Phase>) | DD.MM – DD.MM.YYYY
+# WOCHE <N> (<Phase>) | DD.MM. – DD.MM.YYYY
 
-[[<plan-index-filename>|← Back to plan]]
+[[<plan-index-filename>|← Zurück zum Plan]]
 
-| Day | Date   | Session            | Strength | Log |
-| --- | ------ | ------------------ | -------- | --- |
-| Mon | DD.MM  | –                  |          |     |
-| Tue | DD.MM  | <session> (<pace>) |          |     |
+| Tag | Datum  | <~XX km>           | Kraft/Stabi | Log |
+| --- | ------ | ------------------ | ----------- | --- |
+| Mo  | DD.MM. | –                  |             |     |
+| Di  | DD.MM. | <session> (<pace>) |             |     |
 ...
 
 ---
 
-## Weekly goal
+## Wochenziel
 
-<1–2 sentences on the week's focus>
+<1–2 Sätze zum Wochenfokus>
 
-## Session goals
+## Einheitenziele
 
-**Tue – <session>:** <why this session>
-**Sun – <session>:** <why this session>
+**Di – <session>:** <Warum diese Einheit>
+**So – <session>:** <Warum diese Einheit>
 ~~~
 
-### Plan index file
+English template: use `WEEK`, `← Back to plan`, `## Weekly goal`, `## Session goals`, English day names (Mon/Tue/…).
 
-`<plan-slug>/<plan-slug>.md` — pace overview table, macrocycle table, links to all week files.
+### Plan index file pair
+
+Write two sibling files:
+
+**`<plan-slug>.md`** — pace overview table, macrocycle table, links to all week files.
+
+**`<plan-slug>.yaml`** — machine-readable macrocycle index:
+
+```yaml
+slug: <plan-slug>
+race_type: <marathon|half-marathon|10k|…>
+race_date: "YYYY-MM-DD"
+goal_time: "H:MM"
+weeks:
+  - week: 1
+    file: "W1 – DD.MM–DD.MM"   # base name without extension
+    phase: Build
+    dates:
+      start: "YYYY-MM-DD"
+      end: "YYYY-MM-DD"
+    total_km: XX
+  - week: 2
+    …
+```
+
+This enables tooling (sync-garmin, plan analysis) to enumerate all weeks without parsing markdown.
 
 ---
 

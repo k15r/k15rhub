@@ -21,7 +21,7 @@ allowed-tools:
 **User arguments:** `$ARGUMENTS`
 
 - `user=<name>` *(optional)* — which user's config to use
-- Remaining argument: optional Runalyze activity ID or date (YYYY-MM-DD). Default: fetch the latest activity.
+- Remaining argument: optional activity ID or date (YYYY-MM-DD). Default: fetch the latest activity.
 
 ---
 
@@ -422,6 +422,8 @@ entries:
     pace: "M:SS"              # omit for non-running
     hf_avg: XXX
     training_effect: X.X      # omit if absent
+    hr_drift: X.X             # running only: (avg HR second half − avg HR first half) in bpm;
+                              # positive = drift (fatigue signal), 0 = flat, negative = negative split
     plan: "<current_plan>"    # omit for free runs
     planwoche: "W<N>"         # omit for free runs
     soll_pace: "M:SS–M:SS"    # omit for free runs
@@ -429,6 +431,8 @@ entries:
     file: "YYYY-MM/YYYY-MM-DD <Type>"  # path relative to Lauftagebuch/, without extension
 health: []  # unchanged
 ```
+
+To compute `hr_drift`: split the valid laps into two halves, take the average `hf_avg` of each half, subtract first from second. Omit if fewer than 4 laps or lap HR data is absent.
 
 ---
 
