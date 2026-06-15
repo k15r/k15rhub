@@ -5,7 +5,7 @@ description: >-
   the user's fitness level, goals, and recent run history (Runalyze or manually provided).
   Adapts to any experience level and race type (5k, 10k, half-marathon, marathon, ultramarathon).
   Supports onboarding for new users.
-argument-hint: "[user=<name>] [race=<type>] [new | update | status | <coaching question>]"
+argument-hint: "[user=<name>] [race=<type>] [new | update | status | sync | <coaching question>]"
 allowed-tools:
   - Edit(./**)
   - Write(./**)
@@ -22,6 +22,7 @@ allowed-tools:
 - `new` — create a new training plan
 - `update` — adjust an existing plan (schedule change, race result, injury)
 - `status` — assess current training state
+- `sync` — push current plan's future sessions to Garmin Connect (delete and replace)
 - Free text → coaching question, adjustment, or analysis
 
 ---
@@ -179,3 +180,19 @@ uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --
 ```
 
 This uploads and schedules all sessions as structured workouts. Run silently in the background — if it fails, log the error but do not block the user.
+
+If ACTION is `sync`, skip the agent entirely and go directly to the Garmin push:
+
+1. Read `current_plan` and `output_dir` from `$CONFIG`. If `current_plan` is empty, inform the user that no active plan is set.
+2. Derive the plan directory: `<output_dir>/<Race-Type-Folder>/<current_plan>/`
+3. For each future week YAML (week whose `dates.end` ≥ today):
+   a. For each non-rest session whose `date` is strictly after today:
+      - Delete any previously scheduled Garmin workout for that date
+   b. Re-upload the full week:
+
+```bash
+uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --delete-date <YYYY-MM-DD>
+uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --week <week-yaml-path>
+```
+
+Report how many workouts were pushed and on which dates. If `garmin_email` is not set in `$CONFIG`, inform the user that Garmin sync requires `garmin_email` in the config.

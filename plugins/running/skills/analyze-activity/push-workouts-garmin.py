@@ -331,17 +331,19 @@ def _long_run_workout(s: dict) -> dict:
         reps = int(s.get("effort_reps", 3))
         effort_km = float(s.get("effort_km", 3.0))
         recovery_km = float(s.get("recovery_km", 1.0))
+        # warmup_km / cooldown_km can be specified explicitly; fall back to 25%/10% of total
+        warmup_km = float(s.get("warmup_km", max(dist_km * 0.25, 3.0)))
+        cooldown_km = float(s.get("cooldown_km", max(dist_km * 0.1, 1.0)))
         easy_target = pace_zone_target(easy_p) if ":" in easy_p else no_target()
         effort_target = pace_zone_target(effort_p) if ":" in effort_p else no_target()
-        intro_km = max(dist_km * 0.25, 3.0)
         name = f"Langer DL {dist_km:.0f}km mit Einschüben"
         steps = [
-            main_distance(1, intro_km * 1000, easy_target),
+            main_distance(1, warmup_km * 1000, easy_target),
             repeat_group(2, reps, [
                 interval_distance(1, effort_km * 1000, effort_target),
                 recovery_distance(2, recovery_km * 1000),
             ]),
-            main_distance(3, max(dist_km * 0.1, 1.0) * 1000, easy_target),
+            main_distance(3, cooldown_km * 1000, easy_target),
         ]
         mps = parse_pace_mps(easy_p.split("–")[0]) if "–" in easy_p else parse_pace_mps(easy_p)
         est = int(dist_km * 1000 / mps)
@@ -505,10 +507,19 @@ def main() -> None:
         yaml_files = sorted(plan_dir.glob("W[0-9]* – *.yaml"))
         if not yaml_files:
             die(f"No week YAML files found in {plan_dir}")
+        today = date_cls.today().isoformat()
         garmin = init_garmin(tokenstore)
+        pushed = 0
         for yf in yaml_files:
+            # Skip weeks that have already ended
+            data = load_week_yaml(yf)
+            if data.get("dates", {}).get("end", "9999") < today:
+                print(f"  Skipping past week: {yf.name}", file=sys.stderr)
+                continue
             print(f">>> Processing {yf.name} …", file=sys.stderr)
-            process_week(garmin, tokenstore, yf, future_only=False)
+            process_week(garmin, tokenstore, yf, future_only=True)
+            pushed += 1
+        print(f">>> Done — pushed {pushed} week(s).", file=sys.stderr)
         return
 
     die(f"Unknown mode: {mode!r}")
