@@ -4,6 +4,7 @@
 # dependencies = [
 #   "garminconnect==0.3.6",
 #   "curl_cffi",
+#   "pyyaml",
 # ]
 # ///
 """
@@ -250,8 +251,25 @@ def _safe(fn, *args, **kwargs):
         return None
 
 
+def _update_lauftagebuch_yaml(output_dir: Path, section: str, entry: dict) -> None:
+    """Prepend an entry to the entries or health list in lauftagebuch.yaml."""
+    import yaml as _yaml
+    index_path = output_dir / "Lauftagebuch" / "lauftagebuch.yaml"
+    if index_path.exists():
+        with open(index_path) as f:
+            data = _yaml.safe_load(f) or {}
+    else:
+        data = {}
+    data.setdefault("entries", [])
+    data.setdefault("health", [])
+    data[section].insert(0, entry)
+    with open(index_path, "w") as f:
+        _yaml.dump(data, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
+
+
 def fetch_health_summary(garmin, cdate: str, output_dir: Path) -> None:
-    """Fetch daily health metrics and write a markdown entry to the Lauftagebuch."""
+    """Fetch daily health metrics and write markdown + YAML entries to the Lauftagebuch."""
+    import yaml as _yaml
     print(f">>> Fetching health summary for {cdate} …", file=sys.stderr)
 
     stats       = _safe(garmin.get_stats, cdate) or {}
@@ -277,6 +295,7 @@ def fetch_health_summary(garmin, cdate: str, output_dir: Path) -> None:
     sleep_sec = sleep_data.get("sleepTimeSeconds")
     sleep_score = sleep_data.get("sleepScores", {}).get("overall", {}).get("value") if sleep_data.get("sleepScores") else None
     sleep_h = f"{sleep_sec // 3600}h {(sleep_sec % 3600) // 60}min" if sleep_sec else None
+    sleep_min = sleep_sec // 60 if sleep_sec else None
 
     # Body battery
     bb_entry = body_bat[0] if body_bat else {}
@@ -296,13 +315,48 @@ def fetch_health_summary(garmin, cdate: str, output_dir: Path) -> None:
     # Calories / active time from stats
     calories_active = stats.get("activeKilocalories")
     active_min = stats.get("highlyActiveSeconds")
-    active_min_fmt = f"{active_min // 60} min" if active_min else None
+    active_min_val = active_min // 60 if active_min else None
+    active_min_fmt = f"{active_min_val} min" if active_min_val else None
 
-    # --- Build markdown entry ---
     ym = cdate[:7]  # YYYY-MM
     entry_dir = output_dir / "Lauftagebuch" / ym
     entry_dir.mkdir(parents=True, exist_ok=True)
-    entry_path = entry_dir / f"{cdate} Gesundheit.md"
+    base_name = f"{cdate} Gesundheit"
+
+    # --- Write YAML ---
+    yaml_data: dict = {"date": cdate, "source": "garmin"}
+    for key, val in [
+        ("hf_ruhe", rhr_bpm),
+        ("hrv_last_night", hrv_avg),
+        ("hrv_status", hrv_status),
+        ("schlaf_h", sleep_h),
+        ("schlaf_min", sleep_min),
+        ("schlaf_score", sleep_score),
+        ("body_battery_min", bb_min),
+        ("body_battery_max", bb_max),
+        ("schritte", steps),
+        ("aktive_zeit_min", active_min_val),
+        ("aktive_kcal", calories_active),
+        ("stress_avg", stress_avg),
+        ("stress_max", stress_max),
+        ("spo2_avg", spo2_avg),
+    ]:
+        if val is not None:
+            yaml_data[key] = val
+
+    yaml_path = entry_dir / f"{base_name}.yaml"
+    with open(yaml_path, "w") as f:
+        _yaml.dump(yaml_data, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
+
+    # --- Update lauftagebuch.yaml index ---
+    index_entry: dict = {"date": cdate, "source": "garmin", "file": f"{ym}/{base_name}"}
+    for key in ("hf_ruhe", "hrv_last_night", "hrv_status", "schlaf_score", "body_battery_max", "stress_avg"):
+        if yaml_data.get(key) is not None:
+            index_entry[key] = yaml_data[key]
+    _update_lauftagebuch_yaml(output_dir, "health", index_entry)
+
+    # --- Write markdown ---
+    entry_path = entry_dir / f"{base_name}.md"
 
     def row(label: str, value, unit: str = "") -> str:
         if value is None:
@@ -327,12 +381,12 @@ def fetch_health_summary(garmin, cdate: str, output_dir: Path) -> None:
     ]
 
     for lbl, val, unit in [
-        ("HF Ruhe",       rhr_bpm,    "bpm"),
-        ("HRV letzte Nacht", hrv_avg, "ms"),
-        ("HRV Status",    hrv_status, ""),
-        ("Schlaf",        sleep_h,    ""),
-        ("Schlaf Score",  sleep_score, ""),
-        ("Body Battery",  f"{bb_min}–{bb_max}" if bb_min is not None and bb_max is not None else None, ""),
+        ("HF Ruhe",          rhr_bpm,    "bpm"),
+        ("HRV letzte Nacht", hrv_avg,    "ms"),
+        ("HRV Status",       hrv_status, ""),
+        ("Schlaf",           sleep_h,    ""),
+        ("Schlaf Score",     sleep_score, ""),
+        ("Body Battery",     f"{bb_min}–{bb_max}" if bb_min is not None and bb_max is not None else None, ""),
     ]:
         r = row(lbl, val, unit)
         if r:
@@ -347,19 +401,18 @@ def fetch_health_summary(garmin, cdate: str, output_dir: Path) -> None:
     ]
 
     for lbl, val, unit in [
-        ("Schritte",      steps,       ""),
+        ("Schritte",      steps,          ""),
         ("Aktive Zeit",   active_min_fmt, ""),
         ("Aktive kcal",   calories_active, "kcal"),
-        ("Stress Ø",      stress_avg,  ""),
-        ("Stress max",    stress_max,  ""),
-        ("SpO2 Ø",        spo2_avg,    "%"),
+        ("Stress Ø",      stress_avg,     ""),
+        ("Stress max",    stress_max,     ""),
+        ("SpO2 Ø",        spo2_avg,       "%"),
     ]:
         r = row(lbl, val, unit)
         if r:
             lines.append(r)
 
     lines.append("\n")
-
     entry_path.write_text("".join(lines))
     print(f">>> Health summary written to {entry_path}", file=sys.stderr)
 

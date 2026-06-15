@@ -103,9 +103,9 @@ Read `$CONFIG` and parse `output_dir`, `runalyze_token`, and `current_plan`.
 
 ### 2a — Lauftagebuch (primary source)
 
-Check whether `<output_dir>/Lauftagebuch/Lauftagebuch.md` exists (written by the `analyze-run` skill).
+Check whether `<output_dir>/Lauftagebuch/lauftagebuch.yaml` exists (written by the `analyze-activity` skill).
 
-If it exists: read the index, then read the **5 most recent entry files** in full. Collect their raw markdown — it will be passed verbatim to the agent.
+If it exists: read the last 14 entries from both the `entries` and `health` lists. This is the structured source of truth — use it in preference to the markdown index.
 
 ### 2b — FIT files fallback
 
@@ -129,7 +129,7 @@ If `current_plan` is set, look for plan files under `<output_dir>/<race-type-fol
 
 If `current_plan` is empty or the directory does not exist: scan `<output_dir>/` for subdirectories that contain a directory matching the slug pattern `<race-type>-<YYYY-MM-DD>`. If multiple are found, ask the user which one to use. If none are found, treat plan context as absent. Skip this scan entirely when ACTION is `new`.
 
-If a plan is found: read the plan index file, the current week file, and the 2 prior week files. Collect their raw markdown.
+If a plan is found: read the current week YAML, the 2 prior week YAMLs, and the plan index `.md` file. Collect their raw content.
 
 ---
 
@@ -141,6 +141,8 @@ Invoke the `marathon-coach` agent with the following prompt, substituting all co
 >
 > **ACTION:** `$ACTION`
 >
+> **TODAY:** `<YYYY-MM-DD>`
+>
 > **CONFIG:**
 > ```yaml
 > <full contents of $CONFIG>
@@ -148,16 +150,21 @@ Invoke the `marathon-coach` agent with the following prompt, substituting all co
 > race_type_override: <$RACE_TYPE_OVERRIDE>
 > ```
 >
-> **RUN HISTORY** (`<source: lauftagebuch | fit-analyzer | manual>`)**:**
-> <raw markdown of the 5 most recent Lauftagebuch entries,
->  OR the full fetch-recent-runs.sh output,
->  OR the manually pasted run summary>
+> **ACTIVITY_HISTORY** (last 14 entries, newest first)**:**
+> ```yaml
+> <entries list from lauftagebuch.yaml, last 14 items>
+> ```
+> *(If no lauftagebuch.yaml exists, pass the manually provided run summary as free text under this heading)*
 >
-> **PLAN CONTEXT** (`<found | none>`)**:**
-> <raw markdown of the plan index + current week + 2 prior week files,
->  OR "none" if no plan exists>
+> **HEALTH_HISTORY** (last 14 days, newest first)**:**
+> ```yaml
+> <health list from lauftagebuch.yaml, last 14 items, or "none">
+> ```
 >
-> **TODAY:** `<YYYY-MM-DD>`
+> **PLAN_CONTEXT** (`<found | none>`)**:**
+> ```yaml
+> <full YAML content of current week + 2 prior week files, separated by "---">
+> ```
 >
 > Proceed according to your instructions. When you create or activate a plan, return the plan slug on its own line as: `PLAN_SLUG: <slug>`
 >

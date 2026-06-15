@@ -1,12 +1,13 @@
 ---
 name: analyze-activity
 description: >-
-  Fetches the latest (or a specified) activity from Runalyze, downloads the original FIT file,
-  analyzes it with fit-analyzer, writes a standardized Lauftagebuch entry to the Zettelkasten,
-  and triggers adaptive weekly plan adjustment via the marathon-coach agent. Works for any sport
-  type (running, cycling, swimming, strength, etc.). Use this skill after any activity to
-  document it and keep the training plan current.
-argument-hint: "[user=<name>] [optional: Runalyze activity ID or date YYYY-MM-DD — default: latest activity]"
+  Fetches the latest (or a specified) activity from Garmin Connect or Runalyze, downloads
+  the original FIT file, analyzes it with fit-analyzer, writes a standardized Lauftagebuch
+  entry (markdown + YAML) to the Zettelkasten, and triggers adaptive weekly plan adjustment
+  via the marathon-coach agent. Works for any sport type (running, cycling, swimming,
+  strength, etc.). Use this skill after any activity to document it and keep the training
+  plan current.
+argument-hint: "[user=<name>] [optional: activity ID or date YYYY-MM-DD — default: latest activity]"
 allowed-tools:
   - Edit(./**)
   - Write(./**)
@@ -345,11 +346,55 @@ isowoche: KW<NN>
 - German locale: comma as decimal separator (5,27 not 5.27)
 - Cadence ×2 for running
 
+### Activity YAML (sibling file)
+
+Alongside each `.md` entry, write a sibling `.yaml` with the same base name. This is the structured source of truth read by the marathon-coach agent — always write it, even if the `.md` is the primary display.
+
+```yaml
+date: "YYYY-MM-DD"
+type: <type_lowercase>        # jogging, dauerlauf, intervall, tempo, laufen, radfahren, kraft, …
+sport: <running|cycling|strength|other>
+activity_id: "<id>"
+source: <garmin|runalyze>
+title: "<Runalyze/Garmin title>"
+distance_km: X.XX             # 0 for strength/yoga
+duration: "H:MM:SS"
+timer_time: "H:MM:SS"
+pace: "M:SS"                  # effective pace; omit for non-running
+hf_avg: XXX
+hf_max: XXX
+hoehenmeter_auf: XX           # omit if absent
+hoehenmeter_ab: XX            # omit if absent
+kadenz_avg: XXX               # already ×2; omit if absent
+schrittlaenge_avg: XXXX       # mm; omit if absent
+vertikale_oszillation: XX.X   # mm; omit if absent
+stance_time: XXX              # ms; omit if absent
+vertical_ratio: X.XX          # %; omit if absent
+kalorien: XXXX
+training_effect: X.X          # omit if absent
+plan: "<current_plan>"        # omit for free runs
+planwoche: "W<N>"             # omit for free runs
+plan_day: "<Mo|Di|Mi|Do|Fr|Sa|So>"  # omit for free runs
+soll_distance_km: X.X         # omit for free runs
+soll_pace: "M:SS–M:SS"        # omit for free runs
+soll_duration_min: XX         # omit for free runs
+laps:                         # omit for strength/yoga
+  - n: 1
+    distance_km: X.XX
+    pace: "M:SS"
+    hf_avg: XXX
+reflexion:
+  gut: "<free text>"
+  aufgefallen: "<free text or empty string>"
+```
+
 ---
 
 ## Step 6 — Update the Lauftagebuch index
 
-The index lives at `<output_dir>/Lauftagebuch/Lauftagebuch.md`. Append a row in chronological order:
+### Markdown index
+
+The markdown index lives at `<output_dir>/Lauftagebuch/Lauftagebuch.md`. Append a row in chronological order:
 
 ```markdown
 | [[YYYY-MM/<filename without .md>]] | <Type> | <sport> | XX,XX km | M:SS | XXX | X.X |
@@ -362,6 +407,27 @@ The index table header should be:
 ```markdown
 | Eintrag | Typ | Sport | Distanz | Pace | HF Ø | TE |
 | --- | --- | --- | --- | --- | --- | --- |
+```
+
+### YAML index
+
+Also update `<output_dir>/Lauftagebuch/lauftagebuch.yaml`. If it does not exist, create it with empty `entries: []` and `health: []` lists. Prepend a compact entry to the `entries` list (newest first):
+
+```yaml
+entries:
+  - date: "YYYY-MM-DD"
+    type: <type_lowercase>
+    sport: <running|cycling|strength|other>
+    distance_km: X.XX
+    pace: "M:SS"              # omit for non-running
+    hf_avg: XXX
+    training_effect: X.X      # omit if absent
+    plan: "<current_plan>"    # omit for free runs
+    planwoche: "W<N>"         # omit for free runs
+    soll_pace: "M:SS–M:SS"    # omit for free runs
+    reflexion_aufgefallen: "<text or empty string>"
+    file: "YYYY-MM/YYYY-MM-DD <Type>"  # path relative to Lauftagebuch/, without extension
+health: []  # unchanged
 ```
 
 ---
@@ -397,13 +463,14 @@ For non-running activities, focus on cross-training value and recovery impact.
 
 Only execute this step if `current_plan` is set in `$CONFIG`. Skip silently if no plan exists.
 
-Locate the current week file and the next week file:
+Locate the current and next week YAML files:
 
-1. Read `<output_dir>/<Race-Type-Folder>/<current_plan>/` and list all week files (`W<N> – *.md`, excluding `.bak.` files).
-2. Identify the **current week file**: the one whose date range contains today.
-3. Identify the **next week file**: the immediately following one, if it exists.
-4. Read all Lauftagebuch entries from the last 7 days: scan `<output_dir>/Lauftagebuch/` for entries with `date:` frontmatter within the last 7 days. Read them in full, newest first.
-5. Read the 2 prior week files for load trajectory.
+1. Read `<output_dir>/<Race-Type-Folder>/<current_plan>/` and list all week YAMLs (`W<N> – *.yaml`, excluding `.bak.` files).
+2. Identify the **current week YAML**: the one whose `dates.start`–`dates.end` range contains today.
+3. Identify the **next week YAML**: the immediately following one, if it exists.
+4. Identify the **2 prior week YAMLs** for load trajectory.
+5. Also locate the sibling `.md` files for the current and next week (same base name) — these are passed read-only so the agent can faithfully reproduce unchanged rows.
+6. Read the last 14 entries from `<output_dir>/Lauftagebuch/lauftagebuch.yaml` (both `entries` and `health` lists).
 
 Invoke the `marathon-coach` agent with:
 
@@ -416,46 +483,67 @@ Invoke the `marathon-coach` agent with:
 > <full contents of $CONFIG>
 > ```
 >
-> **CURRENT_WEEK_FILE** (`<W<N> – DD.MM–DD.MM.md>`)**:**
-> <full raw markdown of the current week file>
+> **CURRENT_WEEK_YAML** (`<W<N> – DD.MM–DD.MM.yaml>`)**:**
+> ```yaml
+> <full YAML content>
+> ```
 >
-> **NEXT_WEEK_FILE** (`<W<N+1> – DD.MM–DD.MM.md | none>`)**:**
-> <full raw markdown of the next week file, or "none">
+> **NEXT_WEEK_YAML** (`<W<N+1> – DD.MM–DD.MM.yaml | none>`)**:**
+> ```yaml
+> <full YAML content, or "none">
+> ```
 >
-> **TAGEBUCH_LAST_7_DAYS:**
-> <raw markdown of all Lauftagebuch entries from the last 7 days, newest first>
+> **PRIOR_WEEK_YAMLS:**
+> ```yaml
+> <full YAML content of 2 prior week files, separated by "---">
+> ```
 >
-> **PRIOR_WEEKS:**
-> <raw markdown of the 2 prior week files>
+> **ACTIVITY_HISTORY** (last 14 entries, newest first)**:**
+> ```yaml
+> <entries list from lauftagebuch.yaml, last 14>
+> ```
+>
+> **HEALTH_HISTORY** (last 14 days, newest first)**:**
+> ```yaml
+> <health list from lauftagebuch.yaml, last 14>
+> ```
+>
+> **CURRENT_WEEK_FILE** (read-only — for faithful markdown reproduction only)**:**
+> <raw markdown of the current week .md file>
+>
+> **NEXT_WEEK_FILE** (read-only)**:**
+> <raw markdown of the next week .md file, or "none">
 
-After the agent responds, parse its output for `REWRITE_YAML:` and `REWRITE_FILE:` blocks:
+After the agent responds, parse its output for `REWRITE_YAML:` and `REWRITE_FILE:` blocks. Write the YAML block **before** the markdown block for each week, so the `.yaml` exists on disk when `push-workouts-garmin.py` looks for it.
+
+Each block uses `<<<` / `>>>` as content delimiters:
 
 ```text
 REWRITE_YAML: <full path to .yaml>
-BACKUP_AS: <path with .bak.YYYY-MM-DD before .yaml>
----
+BACKUP_AS: <path with final .yaml replaced by .bak.YYYY-MM-DD.yaml>
+<<<
 <complete new YAML content>
----
+>>>
 
 REWRITE_FILE: <full path to .md>
-BACKUP_AS: <path with .bak.YYYY-MM-DD before .md>
----
+BACKUP_AS: <path with final .md replaced by .bak.YYYY-MM-DD.md>
+<<<
 <complete new markdown content>
----
+>>>
 ```
 
-For each block (YAML and markdown alike):
+For each block:
 1. Copy the current file to the `BACKUP_AS` path.
 2. Overwrite the original file with the new content.
 
 Then parse `CHANGED_DATES: <comma-separated dates or "none">` from the agent response.
 
-If `garmin_email` is set in `$CONFIG` and `CHANGED_DATES` is not "none", delete and re-upload Garmin workouts for each changed date that is strictly in the future (tomorrow or later):
+If `garmin_email` is set in `$CONFIG` and `CHANGED_DATES` is not "none", delete and re-upload Garmin workouts for each changed date that is strictly in the future (tomorrow or later). Run the YAML write above before this step so the `.yaml` is current:
 
 ```bash
 # For each changed date > today:
 uv run --script <skill-dir>/push-workouts-garmin.py $USER --delete-date <YYYY-MM-DD>
-uv run --script <skill-dir>/push-workouts-garmin.py $USER --week <rewritten-week-file-path>
+uv run --script <skill-dir>/push-workouts-garmin.py $USER --week <rewritten-week-yaml-path>
 ```
 
 Run push-workouts silently — if it fails, log the error but do not block the user.

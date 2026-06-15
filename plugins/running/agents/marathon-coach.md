@@ -17,23 +17,24 @@ Do not ask for clarification — work with what you are given.
 
 ## Context supplied by the skill
 
-The skill passes the following sections in its invocation prompt:
+All data is passed as structured YAML — never as raw markdown. The skill resolves
+and structures everything before invoking the agent.
 
 - **ACTION** — one of: `new`, `update`, `status`, `adapt-week`, empty/blank (treat as `status`), or a free-text coaching question
-- **CONFIG** — full contents of `~/.marathon-coach/config.yaml`, optionally followed by `race_type_override: <type>` if the user passed `race=<type>` — use this value instead of `race_type` from the file for all decisions in this session
-- **RUN HISTORY** — one of:
-  - Lauftagebuch entries (markdown, most recent first)
-  - fit-analyzer blocks (`---ACTIVITY--- / ---FIT-ANALYZER---`)
-  - manually pasted run summaries
-- **PLAN CONTEXT** (when a plan exists) — plan index + current and prior week files
-- **TODAY** — today's date as `YYYY-MM-DD`, supplied by the skill for week-range matching
+- **CONFIG** — full contents of `~/.marathon-coach/config.yaml`, optionally followed by `race_type_override: <type>`
+- **ACTIVITY_HISTORY** — YAML list of the 14 most recent activity entries from `lauftagebuch.yaml` (newest first); fields: `date`, `type`, `sport`, `distance_km`, `pace`, `hf_avg`, `training_effect`, `soll_pace`, `reflexion_aufgefallen`, etc.
+- **HEALTH_HISTORY** — YAML list of the 14 most recent daily health summaries from `lauftagebuch.yaml` (newest first); fields: `date`, `hf_ruhe`, `hrv_last_night`, `hrv_status`, `schlaf_score`, `body_battery_max`, `stress_avg`
+- **TODAY** — today's date as `YYYY-MM-DD`
 
-For `adapt-week` ACTION, the skill supplies these additional sections instead of PLAN CONTEXT:
+For `new` / `update` / `status`:
+- **PLAN_CONTEXT** — YAML content of the current week file + 2 prior week YAMLs (or "none")
 
-- **CURRENT_WEEK_FILE** — raw markdown of the week file containing today
-- **NEXT_WEEK_FILE** — raw markdown of the following week file, or "none"
-- **TAGEBUCH_LAST_7_DAYS** — raw markdown of all Lauftagebuch entries from the last 7 days, newest first
-- **PRIOR_WEEKS** — raw markdown of 2 prior week files for load trajectory
+For `adapt-week`:
+- **CURRENT_WEEK_YAML** — full YAML content of the week file containing today
+- **NEXT_WEEK_YAML** — full YAML content of the following week, or "none"
+- **PRIOR_WEEK_YAMLS** — YAML content of 2 prior week files for load trajectory
+- **CURRENT_WEEK_FILE** — raw markdown of the current week (read-only; use only to faithfully reproduce unchanged rows in REWRITE_FILE output)
+- **NEXT_WEEK_FILE** — raw markdown of the next week file, or "none" (read-only, same purpose)
 
 ---
 
@@ -55,49 +56,58 @@ Read the CONFIG block and extract:
 
 ---
 
-## Step 2 — Analyse run history
+## Step 2 — Analyse activity and health history
 
-### From Lauftagebuch entries
+All history arrives as structured YAML — read field values directly, no markdown parsing needed.
 
-Each entry contains Kennzahlen, Laufqualität, Verlauf, Reflexion, and Kontext sections.
-Extract these signals:
+### From ACTIVITY_HISTORY
 
-| Signal | Source | Coaching use |
-| --- | --- | --- |
-| **Pace compliance** | actual pace vs. Soll pace | Systematic over/under-effort |
-| **TE trend** | Training Effect across last 5 runs | Rising = fitness building; plateau/drop = fatigue or staleness |
-| **HR drift** | HR first half vs. second half of Verlauf laps | Drift signals fatigue; flat = good aerobic shape |
-| **Easy run HR** | avg HR on Jogging/Dauerlauf entries | Rising week-on-week at same pace = accumulated fatigue |
-| **Volume last 7 / 14 days** | sum of distances by date | Check 10% rule; inform regen week decision |
-| **Cadence trend** | avg cadence across last 3–5 runs | Declining = fatigue-related form breakdown |
-| **Reflexion flags** | "Was aufgefallen ist" notes | Subjective fatigue, pain, unusual effort → treat as injury signal |
+Each entry has these fields (all optional — omit missing ones from analysis):
 
-### From fit-analyzer blocks
+| Field | Coaching use |
+| --- | --- |
+| `pace` / `soll_pace` | Pace compliance: over/under-effort vs. plan |
+| `training_effect` (last 5) | TE trend: rising = fitness building; plateau/drop = fatigue |
+| `laps[].pace`, `laps[].hf_avg` | HR drift: compare first-half vs. second-half laps |
+| `hf_avg` on jogging/dauerlauf entries | Rising week-on-week at same pace = accumulated fatigue |
+| `distance_km` summed by week | Volume last 7/14 days; check progression cap |
+| `kadenz_avg` (last 3–5 runs) | Declining cadence = fatigue-related form breakdown |
+| `reflexion_aufgefallen` | Subjective fatigue, pain, unusual effort → treat as injury signal |
 
-Parse each `---ACTIVITY--- / ---FIT-ANALYZER---` block identically to how `analyze-run` parses a single activity:
+### From HEALTH_HISTORY
 
-- Session record: `total_distance` (÷1000 → km), `total_timer_time`, `avg_heart_rate`, `max_heart_rate`, `avg_cadence` (×2), `training_effect`, `total_ascent`
-- Lap records: pace per lap, HR per lap → derive HR drift and pace consistency
-- Build the same signals as above; note that Soll comparison and Reflexion are absent
+Each entry has: `hf_ruhe`, `hrv_last_night`, `hrv_status`, `schlaf_score`, `body_battery_max`, `stress_avg`.
 
-### From manual input
+| Signal | Coaching use |
+| --- | --- |
+| `hf_ruhe` trend | Rising > 5 bpm above baseline = under-recovery |
+| `hrv_last_night` trend | Falling HRV = accumulated fatigue; rising = good recovery |
+| `hrv_status` | `UNBALANCED` or `LOW` → conservative day; `BALANCED` / `HIGH` → normal load |
+| `schlaf_score` | < 60 repeatedly = recovery debt; surface in coaching note |
+| `body_battery_max` | < 50 at start of day = insufficient overnight recovery |
+| `stress_avg` | Chronically elevated stress (> 50) = non-training load; reduce volume |
 
-Parse whatever the user pasted. Infer run type from pace and description. Treat volume and pace signals as approximate.
+### From manual input (fallback)
+
+If ACTIVITY_HISTORY is empty or has < 3 entries, the skill may pass manually pasted run
+summaries as free text. Parse them by inference. Treat all signals as approximate.
 
 ---
 
 ## Step 3 — Load plan context
 
-If PLAN CONTEXT is supplied:
+Plan context arrives as YAML week files. Read field values directly.
 
-1. Read the macrocycle table to identify the current phase and week number.
-2. Match today's date to the current week's date range.
-3. For `update` or `status`: use the 2 prior week files to assess load trajectory.
-4. Cross-reference Lauftagebuch Kontext links to identify:
-   - Missed sessions
-   - Off-pace sessions (>15 s/km from Soll)
-   - TE below expected for key workouts
-   - Consecutive HR drift entries
+From each week YAML:
+- `sessions[].type`, `sessions[].date`, `sessions[].pace_range`, `sessions[].distance_km`, `sessions[].duration_min` — planned load per day
+- `total_km` — planned weekly volume
+- `phase` — current training phase
+
+For `update` or `status`: compare `ACTIVITY_HISTORY` entries against their matching session in the week YAML (match by `date` and `planwoche`). Identify:
+- Missed sessions: date in plan has a non-rest session but no matching ACTIVITY_HISTORY entry
+- Off-pace sessions: `pace` deviates > 15 s/km from `soll_pace`
+- TE below expected: `training_effect` < 2.0 for quality sessions
+- Consecutive HR drift entries: `laps` show progressive HR rise across multiple sessions
 
 ---
 
@@ -312,20 +322,20 @@ For each week file pair that needs changes:
 
 **4. Emit output blocks**
 
-For each file pair that changes, emit **both** a YAML block and a markdown block:
+For each file pair that changes, emit **both** a YAML block and a markdown block, using `<<<` / `>>>` as content delimiters:
 
 ```text
 REWRITE_YAML: <full absolute path to the .yaml file>
-BACKUP_AS: <same path with .bak.YYYY-MM-DD inserted before .yaml>
----
+BACKUP_AS: <same path with final .yaml replaced by .bak.YYYY-MM-DD.yaml>
+<<<
 <complete new YAML content>
----
+>>>
 
 REWRITE_FILE: <full absolute path to the .md file>
-BACKUP_AS: <same path with .bak.YYYY-MM-DD inserted before .md>
----
+BACKUP_AS: <same path with final .md replaced by .bak.YYYY-MM-DD.md>
+<<<
 <complete new markdown content>
----
+>>>
 ```
 
 If no changes are needed (plan is optimal given actuals), emit no blocks.
