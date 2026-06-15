@@ -1,13 +1,16 @@
 ---
 name: marathon-coach
 description: >-
-  Marathon and half-marathon training coach. Creates and updates training plans based on
+  Running coach for any race distance. Creates and updates training plans based on
   the user's fitness level, goals, and recent run history (Runalyze or manually provided).
-  Adapts to any experience level. Supports onboarding for new users.
-argument-hint: "[user=<name>] [new | update | status | hm | <coaching question>]"
+  Adapts to any experience level and race type (5k, 10k, half-marathon, marathon, ultramarathon).
+  Supports onboarding for new users.
+argument-hint: "[user=<name>] [race=<type>] [new | update | status | <coaching question>]"
 allowed-tools:
   - Edit(./**)
+  - Write(./**)
   - Edit(~/.marathon-coach/**)
+  - Write(~/.marathon-coach/**)
 ---
 
 # Marathon Coach
@@ -15,10 +18,10 @@ allowed-tools:
 **User arguments:** `$ARGUMENTS`
 
 - `user=<name>` *(optional)* — which user's config to use
-- `new` — create a new training plan (marathon or half-marathon)
+- `race=<type>` *(optional)* — override the race type for this session (e.g. `race=10k`, `race=half-marathon`, `race=50k`); overrides `race_type` in config without permanently changing it
+- `new` — create a new training plan
 - `update` — adjust an existing plan (schedule change, race result, injury)
 - `status` — assess current training state
-- `hm` — half-marathon plan (default: marathon)
 - Free text → coaching question, adjustment, or analysis
 
 ---
@@ -37,6 +40,20 @@ Set `CONFIG_DIR=~/.marathon-coach/<USER>/` and `CONFIG=<CONFIG_DIR>/config.yaml`
 
 ---
 
+## Step 0b — Normalise arguments
+
+After resolving the user, parse the remaining arguments:
+
+1. If `race=<type>` appears, extract it and set `$RACE_TYPE_OVERRIDE = <type>`. Remove it from the remaining string.
+2. From what remains, identify `$ACTION`:
+   - `new`, `update`, or `status` → use as-is
+   - Empty or blank → set `$ACTION = status`
+   - Anything else → treat as a free-text coaching question
+
+If `$RACE_TYPE_OVERRIDE` is set and `$CONFIG` already exists with a different `race_type`, tell the user which value is being used for this session and offer to update the config permanently. Do not rewrite the config without confirmation. Pass `$RACE_TYPE_OVERRIDE` to the agent as `race_type_override:` appended to the CONFIG block.
+
+---
+
 ## Step 1 — Onboarding (first-time setup)
 
 Check whether `$CONFIG` exists.
@@ -45,17 +62,19 @@ Check whether `$CONFIG` exists.
 
 1. **Name** — how to address them (pre-fill with `USER` if derived from directory name)
 2. **Language** — `de` (German) or `en` (English)
-3. **Race type** — marathon or half-marathon
+3. **Race type** — e.g. `10k`, `half-marathon`, `marathon`, `50k`
 4. **Race date** — target race date (YYYY-MM-DD)
 5. **Goal time** — HH:MM, or a descriptor like "finish", "sub-4h", "BQ"
 6. **Weekly hours** — max training hours per week
 7. **Experience level** — `beginner` / `intermediate` / `advanced`
-   - beginner: first marathon / running < 2 years / < 30 km/week
-   - intermediate: 1–3 marathons / 30–60 km/week
-   - advanced: multiple marathons / 60+ km/week
+   - beginner: first race at this distance / running < 2 years / < 30 km/week
+   - intermediate: 1–3 races at this distance / 30–60 km/week
+   - advanced: multiple races at this distance / 60+ km/week
 8. **Notes / constraints** — injuries, constraints, preferences (may be empty)
 9. **Output directory** — base path where plan files will be written
-10. **Runalyze token** *(optional)* — leave blank to enter run data manually
+10. **Activity source** *(choose one)*:
+    - **Runalyze token** — paste token from your Runalyze account settings
+    - **Garmin Connect email** — your Garmin Connect login email (requires `uv`; tokens stored in `~/.garminconnect/` after first interactive login; password is never saved)
 
 Create `$CONFIG_DIR` if it does not exist, then write `$CONFIG`:
 
@@ -64,7 +83,8 @@ name: <name>
 language: <de|en>
 output_dir: <output_dir>
 runalyze_token: "<token or empty>"
-race_type: <marathon|half-marathon>
+garmin_email: "<email or empty>"
+race_type: <e.g. marathon, half-marathon, 10k, 50k>
 race_date: <YYYY-MM-DD>
 goal_time: "<HH:MM or descriptor>"
 weekly_hours: <number>
@@ -92,7 +112,7 @@ If it exists: read the index, then read the **5 most recent entry files** in ful
 If no Lauftagebuch exists, run:
 
 ```bash
-bash <skill-dir>/fetch-recent-runs.sh $USER [count]   # default: 5
+bash <skill-dir>/fetch-recent-activities.sh $USER [count]   # default: 5
 ```
 
 - `NO_CONFIG` → jump back to Step 1
@@ -105,14 +125,9 @@ bash <skill-dir>/fetch-recent-runs.sh $USER [count]   # default: 5
 
 Read `current_plan` from `$CONFIG`.
 
-If `current_plan` is set, look for plan files under:
+If `current_plan` is set, look for plan files under `<output_dir>/<race-type-folder>/<current_plan>/` where `<race-type-folder>` is derived from `race_type` in config (or `$RACE_TYPE_OVERRIDE` if set) by title-casing and replacing hyphens with spaces (e.g. `marathon` → `Marathon`, `half-marathon` → `Half-Marathon`, `10k` → `10k`).
 
-```text
-<output_dir>/Marathon/<current_plan>/       (race_type = marathon)
-<output_dir>/Halbmarathon/<current_plan>/   (race_type = half-marathon)
-```
-
-If `current_plan` is empty or the directory does not exist: scan `<output_dir>/Marathon/` (or `Halbmarathon/`) for existing plan directories. If multiple are found, ask the user which one to use. If none are found, treat plan context as absent.
+If `current_plan` is empty or the directory does not exist: scan `<output_dir>/` for subdirectories that contain a directory matching the slug pattern `<race-type>-<YYYY-MM-DD>`. If multiple are found, ask the user which one to use. If none are found, treat plan context as absent. Skip this scan entirely when ACTION is `new`.
 
 If a plan is found: read the plan index file, the current week file, and the 2 prior week files. Collect their raw markdown.
 
@@ -129,6 +144,8 @@ Invoke the `marathon-coach` agent with the following prompt, substituting all co
 > **CONFIG:**
 > ```yaml
 > <full contents of $CONFIG>
+> <if $RACE_TYPE_OVERRIDE is set, append:>
+> race_type_override: <$RACE_TYPE_OVERRIDE>
 > ```
 >
 > **RUN HISTORY** (`<source: lauftagebuch | fit-analyzer | manual>`)**:**
@@ -140,8 +157,18 @@ Invoke the `marathon-coach` agent with the following prompt, substituting all co
 > <raw markdown of the plan index + current week + 2 prior week files,
 >  OR "none" if no plan exists>
 >
+> **TODAY:** `<YYYY-MM-DD>`
+>
 > Proceed according to your instructions. When you create or activate a plan, return the plan slug on its own line as: `PLAN_SLUG: <slug>`
 >
 > Report back when done.
 
 After the agent responds: if the response contains a `PLAN_SLUG: <slug>` line, update `current_plan` in `$CONFIG` to that value by rewriting the `current_plan:` field.
+
+If `garmin_email` is set in `$CONFIG` and ACTION was `new` or `update`, push the full plan to Garmin Connect:
+
+```bash
+uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --plan <output_dir>/<Race-Type-Folder>/<plan-slug>/
+```
+
+This uploads and schedules all sessions as structured workouts. Run silently in the background — if it fails, log the error but do not block the user.
