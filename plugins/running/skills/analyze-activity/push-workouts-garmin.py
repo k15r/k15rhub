@@ -334,11 +334,11 @@ def _easy_workout(s: dict) -> dict:
     duration_min = int(s["duration_min"])
     pace_range = s.get("pace_range", "")
     total_sec = duration_min * 60
-    main_sec = max(total_sec - 600, 60)
     target = pace_zone_target(pace_range) if pace_range else no_target()
     mid = pace_midpoint_str(pace_range) if pace_range else f"{duration_min}'"
     name = f"{subtype} {duration_min}'@{mid}" if pace_range else f"{subtype} {duration_min}'"
-    steps = [warmup_time(1, 300), main_time(2, main_sec, target), cooldown_time(3, 300)]
+    # Easy runs are single continuous steps — no warmup/cooldown needed
+    steps = [main_time(1, total_sec, target)]
     return {"name": name, "steps": steps, "estimated_secs": total_sec}
 
 
