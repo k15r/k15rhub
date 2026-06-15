@@ -214,6 +214,40 @@ def warmup_time(order: int, secs: float) -> dict:
     return make_step(order, 1, "warmup", 2, "time", secs, no_target())
 
 
+def warmup_lap(order: int, target: dict | None = None) -> dict:
+    """Warmup ending on lap button press — runner decides when they've arrived."""
+    step = {
+        "type": "ExecutableStepDTO",
+        "stepOrder": order,
+        "stepType": {"stepTypeId": 1, "stepTypeKey": "warmup", "displayOrder": 1},
+        "endCondition": {
+            "conditionTypeId": 1, "conditionTypeKey": "lap.button",
+            "displayOrder": 1, "displayable": True,
+        },
+        "targetType": (target or no_target())["targetType"],
+        "targetValueOne": (target or no_target()).get("targetValueOne"),
+        "targetValueTwo": (target or no_target()).get("targetValueTwo"),
+    }
+    return {k: v for k, v in step.items() if v is not None}
+
+
+def cooldown_lap(order: int, target: dict | None = None) -> dict:
+    """Cooldown ending on lap button press."""
+    step = {
+        "type": "ExecutableStepDTO",
+        "stepOrder": order,
+        "stepType": {"stepTypeId": 2, "stepTypeKey": "cooldown", "displayOrder": 2},
+        "endCondition": {
+            "conditionTypeId": 1, "conditionTypeKey": "lap.button",
+            "displayOrder": 1, "displayable": True,
+        },
+        "targetType": (target or no_target())["targetType"],
+        "targetValueOne": (target or no_target()).get("targetValueOne"),
+        "targetValueTwo": (target or no_target()).get("targetValueTwo"),
+    }
+    return {k: v for k, v in step.items() if v is not None}
+
+
 def cooldown_time(order: int, secs: float) -> dict:
     return make_step(order, 2, "cooldown", 2, "time", secs, no_target())
 
@@ -369,6 +403,7 @@ def _intervals_workout(s: dict) -> dict:
     label = s.get("label", "")
 
     target = pace_zone_target(pace_range) if pace_range else no_target()
+    easy = easy_pace_for(pace_range) if pace_range else no_target()
     mid = pace_midpoint_str(pace_range) if pace_range else ""
     dist_label = f"{int(dist_m)}m" if dist_m < 1000 else f"{dist_m/1000:.1f}km"
     name_parts = [f"Intervall {reps}×{dist_label}"]
@@ -384,10 +419,15 @@ def _intervals_workout(s: dict) -> dict:
         rec = recovery_time(2, recovery_min * 60)
 
     rg = repeat_group(2, reps, [interval_distance(1, dist_m, target), rec])
+
+    # Warmup and cooldown on lap button — runner jogs to their session spot
+    wu = warmup_lap(1, easy)
+    cd = cooldown_lap(3, easy)
+
     mps = parse_pace_mps(pace_range.split("–")[0]) if pace_range else 0.05
     rec_sec = recovery_m / 2.5 if recovery_type == "distance" else recovery_min * 60
     est = int(1200 + reps * (dist_m / mps + rec_sec))
-    return {"name": name, "steps": [warmup_time(1, 600), rg, cooldown_time(3, 600)], "estimated_secs": est}
+    return {"name": name, "steps": [wu, rg, cd], "estimated_secs": est}
 
 
 # ---------------------------------------------------------------------------
