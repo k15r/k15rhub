@@ -418,6 +418,8 @@ Session type fields:
 
 `pace_range` is always `"M:SS–M:SS"` in min:sec per km. `hr_range` is `"NNN–NNN"` in bpm. Use at most one target per session — `pace_range` takes priority over `hr_range`. Never use descriptors like "HM-Pace" as the pace value — always resolve to actual min:sec. Use `label` for display only.
 
+`warmup_min` / `cooldown_min` should only be set when the warmup or cooldown has a **prescribed duration** — e.g. a structured warmup with strides, drills, or a specific pace progression, or a race-day warmup protocol. **Omit them for standard jogging warmups** (jog to the track, jog home). When omitted, the Garmin workout uses a lap-button trigger so the athlete presses lap when ready, which is the preferred default for intervals and tempo sessions.
+
 **`W<N> – DD.MM–DD.MM.md`** — human-readable, derived from the YAML. Use the language from config (`de` or `en`) for all headings and labels. German template:
 
 ~~~markdown
