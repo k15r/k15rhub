@@ -156,10 +156,12 @@ def pace_midpoint_str(pace_range: str) -> str:
 
 def pace_zone_target(pace_range: str) -> dict:
     fast_mps, slow_mps = pace_range_targets(pace_range)
+    # Garmin displays targetValueOne first — set it to the fast end so the
+    # zone reads fast→slow (e.g. 4:10–4:15, not 4:15–4:10).
     return {
         "targetType": {"workoutTargetTypeId": 6, "workoutTargetTypeKey": "pace.zone", "displayOrder": 6},
-        "targetValueOne": slow_mps,
-        "targetValueTwo": fast_mps,
+        "targetValueOne": fast_mps,
+        "targetValueTwo": slow_mps,
     }
 
 
