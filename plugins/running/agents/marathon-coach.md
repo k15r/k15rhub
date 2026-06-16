@@ -410,13 +410,13 @@ Session type fields:
 | type | required fields |
 | --- | --- |
 | `rest` | — |
-| `easy` | `subtype: jogging\|dauerlauf`, `duration_min`, `pace_range` (e.g. `"5:35–5:45"`) |
-| `tempo` | `distance_km` OR `effort_min` (one required), `pace_range`; optional `warmup_min`, `cooldown_min` |
-| `long_run` | `distance_km` OR `duration_min` (one required), `pace_range`; if structured: add `with_efforts: true`, `easy_pace`, `effort_pace`, `effort_reps`, `effort_km`, `recovery_km` (structured requires `distance_km`) |
-| `intervals` | `reps`, (`distance_m` OR `effort_min`), `pace_range`, `recovery_type: distance\|time`, then `recovery_m`, `recovery_min`, or `recovery_sec`; optional `warmup_min`, `cooldown_min`, `label` |
+| `easy` | `subtype: jogging\|dauerlauf`, `duration_min`, and one of: `pace_range`, `hr_range`, or neither |
+| `tempo` | `distance_km` OR `effort_min` (one required), and one of: `pace_range`, `hr_range`; optional `warmup_min`, `cooldown_min` |
+| `long_run` | `distance_km` OR `duration_min` (one required), and one of: `pace_range`, `hr_range`; if structured: add `with_efforts: true`, `easy_pace`, `effort_pace`, `effort_reps`, `effort_km`, `recovery_km` (structured requires `distance_km`) |
+| `intervals` | `reps`, (`distance_m` OR `effort_min`), and one of: `pace_range`, `hr_range`; `recovery_type: distance\|time`, then `recovery_m`, `recovery_min`, or `recovery_sec`; optional `warmup_min`, `cooldown_min`, `label` |
 | `race` | `distance_km`, `goal_time` |
 
-`pace_range` is always `"M:SS–M:SS"` in min:sec per km. Never use descriptors like "HM-Pace" as the pace value — always resolve to actual min:sec. Use `label` for display only.
+`pace_range` is always `"M:SS–M:SS"` in min:sec per km. `hr_range` is `"NNN–NNN"` in bpm. Use at most one target per session — `pace_range` takes priority over `hr_range`. Never use descriptors like "HM-Pace" as the pace value — always resolve to actual min:sec. Use `label` for display only.
 
 **`W<N> – DD.MM–DD.MM.md`** — human-readable, derived from the YAML. Use the language from config (`de` or `en`) for all headings and labels. German template:
 

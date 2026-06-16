@@ -156,13 +156,36 @@ def pace_midpoint_str(pace_range: str) -> str:
 
 def pace_zone_target(pace_range: str) -> dict:
     fast_mps, slow_mps = pace_range_targets(pace_range)
-    # Garmin displays targetValueOne first — set it to the fast end so the
-    # zone reads fast→slow (e.g. 4:10–4:15, not 4:15–4:10).
+    # Garmin displays targetValueOne first — fast end so zone reads fast→slow.
     return {
         "targetType": {"workoutTargetTypeId": 6, "workoutTargetTypeKey": "pace.zone", "displayOrder": 6},
         "targetValueOne": fast_mps,
         "targetValueTwo": slow_mps,
     }
+
+
+def hr_zone_target(hr_range: str) -> dict:
+    """Build a heart rate zone target from 'NNN–NNN' bpm range string."""
+    parts = [p.strip() for p in hr_range.replace("—", "–").split("–") if p.strip()]
+    low = int(parts[0])
+    high = int(parts[1]) if len(parts) > 1 else low + 10
+    # Garmin displays low bpm first for HR zones
+    return {
+        "targetType": {"workoutTargetTypeId": 4, "workoutTargetTypeKey": "heart.rate.zone", "displayOrder": 4},
+        "targetValueOne": low,
+        "targetValueTwo": high,
+    }
+
+
+def resolve_target(s: dict) -> dict:
+    """Pick the best target from a session dict.
+    Priority: pace_range > hr_range > no target.
+    """
+    if s.get("pace_range"):
+        return pace_zone_target(s["pace_range"])
+    if s.get("hr_range"):
+        return hr_zone_target(s["hr_range"])
+    return no_target()
 
 
 def easy_pace_for(pace_range: str, offset_sec: int = 60) -> dict:
@@ -183,6 +206,32 @@ def no_target() -> dict:
         "targetValueOne": None,
         "targetValueTwo": None,
     }
+
+
+def resolve_end_condition(s: dict, prefer_key: str = "distance") -> tuple[int, str, float | None]:
+    """Return (cond_id, cond_key, cond_value) for the best end condition.
+    prefer_key: 'distance' or 'time' — which to prefer when both are present.
+    For session-level keys use distance_km / duration_min / effort_min.
+    """
+    dist = s.get("distance_km") or s.get("effort_km")
+    dur = s.get("duration_min") or s.get("effort_min")
+
+    if prefer_key == "distance" and dist is not None:
+        return 3, "distance", float(dist) * 1000
+    if dur is not None:
+        return 2, "time", float(dur) * 60
+    if dist is not None:
+        return 3, "distance", float(dist) * 1000
+    return 1, "lap.button", None  # fallback
+
+
+def step_name_suffix(s: dict) -> str:
+    """Build the '@pace' or '@HR' suffix for a workout name."""
+    if s.get("pace_range"):
+        return f"@{pace_midpoint_str(s['pace_range'])}"
+    if s.get("hr_range"):
+        return f"@{s['hr_range']}bpm"
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -334,14 +383,11 @@ def session_to_workout(session: dict) -> dict | None:
 def _easy_workout(s: dict) -> dict:
     subtype = s.get("subtype", "jogging").capitalize()
     duration_min = int(s["duration_min"])
-    pace_range = s.get("pace_range", "")
-    total_sec = duration_min * 60
-    target = pace_zone_target(pace_range) if pace_range else no_target()
-    mid = pace_midpoint_str(pace_range) if pace_range else f"{duration_min}'"
-    name = f"{subtype} {duration_min}'@{mid}" if pace_range else f"{subtype} {duration_min}'"
-    # Easy runs are single continuous steps — no warmup/cooldown needed
-    steps = [main_time(1, total_sec, target)]
-    return {"name": name, "steps": steps, "estimated_secs": total_sec}
+    target = resolve_target(s)
+    suffix = step_name_suffix(s)
+    name = f"{subtype} {duration_min}'{suffix}"
+    steps = [main_time(1, duration_min * 60, target)]
+    return {"name": name, "steps": steps, "estimated_secs": duration_min * 60}
 
 
 def _tempo_workout(s: dict) -> dict:
@@ -349,34 +395,27 @@ def _tempo_workout(s: dict) -> dict:
     effort_min = s.get("effort_min")
     warmup_min = s.get("warmup_min")
     cooldown_min = s.get("cooldown_min")
-    pace_range = s.get("pace_range", "")
-    target = pace_zone_target(pace_range) if pace_range else no_target()
-    easy = easy_pace_for(pace_range) if pace_range else no_target()
-    mid = pace_midpoint_str(pace_range) if pace_range else ""
+    target = resolve_target(s)
+    easy = easy_pace_for(s["pace_range"]) if s.get("pace_range") else no_target()
+    suffix = step_name_suffix(s)
+
+    wu_secs = float(warmup_min) * 60 if warmup_min else 600
+    cd_secs = float(cooldown_min) * 60 if cooldown_min else 600
+    wu = warmup_time(1, wu_secs) if warmup_min else warmup_lap(1, easy)
+    cd = cooldown_time(3, cd_secs) if cooldown_min else cooldown_lap(3, easy)
 
     if dist_km is not None:
-        # Distance-based: fixed warmup/cooldown + distance main step
         dist_km = float(dist_km)
-        name = f"Flotter DL {dist_km:.0f}km@{mid}" if mid else f"Flotter DL {dist_km:.0f}km"
-        wu_secs = float(warmup_min) * 60 if warmup_min else 600
-        cd_secs = float(cooldown_min) * 60 if cooldown_min else 600
-        wu = warmup_time(1, wu_secs) if warmup_min else warmup_lap(1, easy)
-        cd = cooldown_time(3, cd_secs) if cooldown_min else cooldown_lap(3, easy)
-        steps = [wu, main_distance(2, dist_km * 1000, target), cd]
-        mps = parse_pace_mps(pace_range.split("–")[0]) if pace_range else 0.05
+        name = f"Flotter DL {dist_km:.0f}km{suffix}"
+        mps = parse_pace_mps(s["pace_range"].split("–")[0]) if s.get("pace_range") else 0.05
         est = int(wu_secs + dist_km * 1000 / mps + cd_secs)
+        steps = [wu, main_distance(2, dist_km * 1000, target), cd]
     elif effort_min is not None:
-        # Time-based: explicit warmup + effort block + cooldown
-        effort_sec = float(effort_min) * 60
-        wu_secs = float(warmup_min) * 60 if warmup_min else 600
-        cd_secs = float(cooldown_min) * 60 if cooldown_min else 600
-        name = f"Tempo {int(effort_min)}'@{mid}" if mid else f"Tempo {int(effort_min)}'"
-        wu = warmup_time(1, wu_secs) if warmup_min else warmup_lap(1, easy)
-        cd = cooldown_time(3, cd_secs) if cooldown_min else cooldown_lap(3, easy)
-        steps = [wu, main_time(2, effort_sec, target), cd]
-        est = int(wu_secs + effort_sec + cd_secs)
+        name = f"Tempo {int(effort_min)}'{suffix}"
+        est = int(wu_secs + float(effort_min) * 60 + cd_secs)
+        steps = [wu, main_time(2, float(effort_min) * 60, target), cd]
     else:
-        print("  SKIP: tempo requires either distance_km or effort_min", file=sys.stderr)
+        print("  SKIP: tempo requires distance_km or effort_min", file=sys.stderr)
         return None
 
     return {"name": name, "steps": steps, "estimated_secs": est}
@@ -386,18 +425,14 @@ def _long_run_workout(s: dict) -> dict:
     dist_km = s.get("distance_km")
     duration_min = s.get("duration_min")
     with_efforts = s.get("with_efforts", False)
-    pace_range = s.get("pace_range", "")
-
-    if dist_km is not None:
-        dist_km = float(dist_km)
-    if duration_min is not None:
-        duration_min = int(duration_min)
+    target = resolve_target(s)
+    suffix = step_name_suffix(s)
 
     if with_efforts:
-        # Structured long run always needs distance to build rep groups
         if dist_km is None:
             print("  SKIP: long_run with_efforts requires distance_km", file=sys.stderr)
             return None
+        dist_km = float(dist_km)
         easy_p = s.get("easy_pace", "5:30")
         effort_p = s.get("effort_pace", easy_p)
         reps = int(s.get("effort_reps", 3))
@@ -405,8 +440,10 @@ def _long_run_workout(s: dict) -> dict:
         recovery_km = float(s.get("recovery_km", 1.0))
         warmup_km = float(s.get("warmup_km", max(dist_km * 0.25, 3.0)))
         cooldown_km = float(s.get("cooldown_km", max(dist_km * 0.1, 1.0)))
-        easy_target = pace_zone_target(easy_p) if ":" in easy_p else no_target()
-        effort_target = pace_zone_target(effort_p) if ":" in effort_p else no_target()
+        # Support pace or HR targets for each phase
+        easy_target = pace_zone_target(easy_p) if ":" in str(easy_p) else (hr_zone_target(easy_p) if easy_p else no_target())
+        effort_session = {"pace_range": effort_p} if ":" in str(effort_p) else {"hr_range": effort_p}
+        effort_target = resolve_target(effort_session)
         name = f"Langer DL {dist_km:.0f}km mit Einschüben"
         steps = [
             main_distance(1, warmup_km * 1000, easy_target),
@@ -416,26 +453,20 @@ def _long_run_workout(s: dict) -> dict:
             ]),
             main_distance(3, cooldown_km * 1000, easy_target),
         ]
-        mps = parse_pace_mps(easy_p.split("–")[0]) if "–" in easy_p else parse_pace_mps(easy_p)
+        mps = parse_pace_mps(easy_p.split("–")[0]) if "–" in str(easy_p) else (parse_pace_mps(easy_p) if ":" in str(easy_p) else 0.05)
         est = int(dist_km * 1000 / mps)
     elif dist_km is not None:
-        # Distance-based simple long run
-        target = pace_zone_target(pace_range) if pace_range else no_target()
-        mid = pace_midpoint_str(pace_range) if pace_range else ""
-        name = f"Langer DL {dist_km:.0f}km@{mid}" if mid else f"Langer DL {dist_km:.0f}km"
+        dist_km = float(dist_km)
+        name = f"Langer DL {dist_km:.0f}km{suffix}"
         steps = [main_distance(1, dist_km * 1000, target)]
-        mps = parse_pace_mps(pace_range.split("–")[0]) if pace_range else 0.05
+        mps = parse_pace_mps(s["pace_range"].split("–")[0]) if s.get("pace_range") else 0.05
         est = int(dist_km * 1000 / mps)
     elif duration_min is not None:
-        # Duration-based long run — single time step, no warmup/cooldown
-        target = pace_zone_target(pace_range) if pace_range else no_target()
-        mid = pace_midpoint_str(pace_range) if pace_range else f"{duration_min}'"
-        name = f"Langer DL {duration_min}'@{mid}" if pace_range else f"Langer DL {duration_min}'"
-        total_sec = duration_min * 60
-        steps = [main_time(1, total_sec, target)]
-        est = total_sec
+        name = f"Langer DL {int(duration_min)}'{suffix}"
+        steps = [main_time(1, float(duration_min) * 60, target)]
+        est = int(float(duration_min) * 60)
     else:
-        print("  SKIP: long_run requires either distance_km or duration_min", file=sys.stderr)
+        print("  SKIP: long_run requires distance_km or duration_min", file=sys.stderr)
         return None
 
     return {"name": name, "steps": steps, "estimated_secs": est}
@@ -445,25 +476,24 @@ def _intervals_workout(s: dict) -> dict:
     reps = int(s["reps"])
     dist_m = s.get("distance_m")
     effort_min = s.get("effort_min")
-    pace_range = s.get("pace_range", "")
     recovery_type = s.get("recovery_type", "time")
     recovery_m = s.get("recovery_m", 400)
     recovery_min = s.get("recovery_min", 1.5)
-    recovery_sec = s.get("recovery_sec")  # explicit seconds alternative
+    recovery_sec = s.get("recovery_sec")
     warmup_min = s.get("warmup_min")
     cooldown_min = s.get("cooldown_min")
     label = s.get("label", "")
 
-    target = pace_zone_target(pace_range) if pace_range else no_target()
-    easy = easy_pace_for(pace_range) if pace_range else no_target()
-    mid = pace_midpoint_str(pace_range) if pace_range else ""
+    target = resolve_target(s)
+    easy = easy_pace_for(s["pace_range"]) if s.get("pace_range") else no_target()
+    suffix = step_name_suffix(s)
 
-    # Build interval step (distance or time based)
+    # Interval step
     if dist_m is not None:
         dist_m = float(dist_m)
         dist_label = f"{int(dist_m)}m" if dist_m < 1000 else f"{dist_m/1000:.1f}km"
         interval_step = interval_distance(1, dist_m, target)
-        mps = parse_pace_mps(pace_range.split("–")[0]) if pace_range else 0.05
+        mps = parse_pace_mps(s["pace_range"].split("–")[0]) if s.get("pace_range") else 0.05
         interval_sec = dist_m / mps
     elif effort_min is not None:
         effort_sec = float(effort_min) * 60
@@ -471,17 +501,16 @@ def _intervals_workout(s: dict) -> dict:
         interval_step = make_step(1, 3, "interval", 2, "time", effort_sec, target)
         interval_sec = effort_sec
     else:
-        print("  SKIP: intervals requires either distance_m or effort_min", file=sys.stderr)
+        print("  SKIP: intervals requires distance_m or effort_min", file=sys.stderr)
         return None
 
     name_parts = [f"Intervall {reps}×{dist_label}"]
     if label:
         name_parts.append(label)
-    if mid:
-        name_parts[-1] += f"@{mid}"
+    name_parts[-1] += suffix
     name = " ".join(name_parts)
 
-    # Build recovery step
+    # Recovery step
     if recovery_sec is not None:
         rec = recovery_time(2, float(recovery_sec))
         rec_sec = float(recovery_sec)
@@ -494,21 +523,12 @@ def _intervals_workout(s: dict) -> dict:
 
     rg = repeat_group(2, reps, [interval_step, rec])
 
-    # Warmup: explicit minutes if provided, otherwise lap button
-    if warmup_min is not None:
-        wu = warmup_time(1, float(warmup_min) * 60)
-    else:
-        wu = warmup_lap(1, easy)
+    wu_secs = float(warmup_min) * 60 if warmup_min else 600
+    cd_secs = float(cooldown_min) * 60 if cooldown_min else 600
+    wu = warmup_time(1, wu_secs) if warmup_min else warmup_lap(1, easy)
+    cd = cooldown_time(3, cd_secs) if cooldown_min else cooldown_lap(3, easy)
 
-    # Cooldown: explicit minutes if provided, otherwise lap button
-    if cooldown_min is not None:
-        cd = cooldown_time(3, float(cooldown_min) * 60)
-    else:
-        cd = cooldown_lap(3, easy)
-
-    wu_sec = float(warmup_min) * 60 if warmup_min else 600
-    cd_sec = float(cooldown_min) * 60 if cooldown_min else 600
-    est = int(wu_sec + reps * (interval_sec + rec_sec) + cd_sec)
+    est = int(wu_secs + reps * (interval_sec + rec_sec) + cd_secs)
     return {"name": name, "steps": [wu, rg, cd], "estimated_secs": est}
 
 
