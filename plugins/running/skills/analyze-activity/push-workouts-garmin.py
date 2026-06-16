@@ -345,15 +345,40 @@ def _easy_workout(s: dict) -> dict:
 
 
 def _tempo_workout(s: dict) -> dict:
-    dist_km = float(s["distance_km"])
+    dist_km = s.get("distance_km")
+    effort_min = s.get("effort_min")
+    warmup_min = s.get("warmup_min")
+    cooldown_min = s.get("cooldown_min")
     pace_range = s.get("pace_range", "")
     target = pace_zone_target(pace_range) if pace_range else no_target()
     easy = easy_pace_for(pace_range) if pace_range else no_target()
     mid = pace_midpoint_str(pace_range) if pace_range else ""
-    name = f"Flotter DL {dist_km:.0f}km@{mid}" if mid else f"Flotter DL {dist_km:.0f}km"
-    mps = parse_pace_mps(pace_range.split("–")[0]) if pace_range else 0.05
-    est = int(1200 + dist_km * 1000 / mps)
-    steps = [warmup_time(1, 600), main_distance(2, dist_km * 1000, target), cooldown_time(3, 600)]
+
+    if dist_km is not None:
+        # Distance-based: fixed warmup/cooldown + distance main step
+        dist_km = float(dist_km)
+        name = f"Flotter DL {dist_km:.0f}km@{mid}" if mid else f"Flotter DL {dist_km:.0f}km"
+        wu_secs = float(warmup_min) * 60 if warmup_min else 600
+        cd_secs = float(cooldown_min) * 60 if cooldown_min else 600
+        wu = warmup_time(1, wu_secs) if warmup_min else warmup_lap(1, easy)
+        cd = cooldown_time(3, cd_secs) if cooldown_min else cooldown_lap(3, easy)
+        steps = [wu, main_distance(2, dist_km * 1000, target), cd]
+        mps = parse_pace_mps(pace_range.split("–")[0]) if pace_range else 0.05
+        est = int(wu_secs + dist_km * 1000 / mps + cd_secs)
+    elif effort_min is not None:
+        # Time-based: explicit warmup + effort block + cooldown
+        effort_sec = float(effort_min) * 60
+        wu_secs = float(warmup_min) * 60 if warmup_min else 600
+        cd_secs = float(cooldown_min) * 60 if cooldown_min else 600
+        name = f"Tempo {int(effort_min)}'@{mid}" if mid else f"Tempo {int(effort_min)}'"
+        wu = warmup_time(1, wu_secs) if warmup_min else warmup_lap(1, easy)
+        cd = cooldown_time(3, cd_secs) if cooldown_min else cooldown_lap(3, easy)
+        steps = [wu, main_time(2, effort_sec, target), cd]
+        est = int(wu_secs + effort_sec + cd_secs)
+    else:
+        print("  SKIP: tempo requires either distance_km or effort_min", file=sys.stderr)
+        return None
+
     return {"name": name, "steps": steps, "estimated_secs": est}
 
 

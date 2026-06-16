@@ -411,7 +411,7 @@ Session type fields:
 | --- | --- |
 | `rest` | — |
 | `easy` | `subtype: jogging\|dauerlauf`, `duration_min`, `pace_range` (e.g. `"5:35–5:45"`) |
-| `tempo` | `distance_km`, `pace_range` |
+| `tempo` | `distance_km` OR `effort_min` (one required), `pace_range`; optional `warmup_min`, `cooldown_min` |
 | `long_run` | `distance_km` OR `duration_min` (one required), `pace_range`; if structured: add `with_efforts: true`, `easy_pace`, `effort_pace`, `effort_reps`, `effort_km`, `recovery_km` (structured requires `distance_km`) |
 | `intervals` | `reps`, (`distance_m` OR `effort_min`), `pace_range`, `recovery_type: distance\|time`, then `recovery_m`, `recovery_min`, or `recovery_sec`; optional `warmup_min`, `cooldown_min`, `label` |
 | `race` | `distance_km`, `goal_time` |
