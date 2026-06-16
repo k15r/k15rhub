@@ -356,16 +356,26 @@ def _tempo_workout(s: dict) -> dict:
 
 
 def _long_run_workout(s: dict) -> dict:
-    dist_km = float(s["distance_km"])
+    dist_km = s.get("distance_km")
+    duration_min = s.get("duration_min")
     with_efforts = s.get("with_efforts", False)
+    pace_range = s.get("pace_range", "")
+
+    if dist_km is not None:
+        dist_km = float(dist_km)
+    if duration_min is not None:
+        duration_min = int(duration_min)
 
     if with_efforts:
+        # Structured long run always needs distance to build rep groups
+        if dist_km is None:
+            print("  SKIP: long_run with_efforts requires distance_km", file=sys.stderr)
+            return None
         easy_p = s.get("easy_pace", "5:30")
         effort_p = s.get("effort_pace", easy_p)
         reps = int(s.get("effort_reps", 3))
         effort_km = float(s.get("effort_km", 3.0))
         recovery_km = float(s.get("recovery_km", 1.0))
-        # warmup_km / cooldown_km can be specified explicitly; fall back to 25%/10% of total
         warmup_km = float(s.get("warmup_km", max(dist_km * 0.25, 3.0)))
         cooldown_km = float(s.get("cooldown_km", max(dist_km * 0.1, 1.0)))
         easy_target = pace_zone_target(easy_p) if ":" in easy_p else no_target()
@@ -381,14 +391,25 @@ def _long_run_workout(s: dict) -> dict:
         ]
         mps = parse_pace_mps(easy_p.split("–")[0]) if "–" in easy_p else parse_pace_mps(easy_p)
         est = int(dist_km * 1000 / mps)
-    else:
-        pace_range = s.get("pace_range", "")
+    elif dist_km is not None:
+        # Distance-based simple long run
         target = pace_zone_target(pace_range) if pace_range else no_target()
         mid = pace_midpoint_str(pace_range) if pace_range else ""
         name = f"Langer DL {dist_km:.0f}km@{mid}" if mid else f"Langer DL {dist_km:.0f}km"
         steps = [main_distance(1, dist_km * 1000, target)]
         mps = parse_pace_mps(pace_range.split("–")[0]) if pace_range else 0.05
         est = int(dist_km * 1000 / mps)
+    elif duration_min is not None:
+        # Duration-based long run — single time step, no warmup/cooldown
+        target = pace_zone_target(pace_range) if pace_range else no_target()
+        mid = pace_midpoint_str(pace_range) if pace_range else f"{duration_min}'"
+        name = f"Langer DL {duration_min}'@{mid}" if pace_range else f"Langer DL {duration_min}'"
+        total_sec = duration_min * 60
+        steps = [main_time(1, total_sec, target)]
+        est = total_sec
+    else:
+        print("  SKIP: long_run requires either distance_km or duration_min", file=sys.stderr)
+        return None
 
     return {"name": name, "steps": steps, "estimated_secs": est}
 
