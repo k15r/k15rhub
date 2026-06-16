@@ -55,7 +55,7 @@ The script checks that `fit-analyzer` is installed and exits with an error if no
 
 The source is auto-detected from config:
 
-- `garmin_email` set → uses Garmin Connect via `fetch-fit-garmin.py` (requires `uv`; dependencies are installed automatically on first run via PEP 723 inline metadata)
+- `garmin_email` set → uses Garmin Connect via `fetch-fit-garmin.py` (requires `uv`; dependencies are installed automatically on first run via PEP 723 inline metadata). After downloading the activity, the script automatically fetches health summaries for all days since the last health sync up to yesterday (complete data), and re-fetches today if a partial entry already exists.
 - `runalyze_token` set → uses Runalyze API directly
 
 - No argument → latest activity (any sport)

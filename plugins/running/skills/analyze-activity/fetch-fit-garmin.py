@@ -109,6 +109,62 @@ def write_last_sync(tokenstore: str, date_str: str) -> None:
     Path(last_sync_path(tokenstore)).write_text(date_str)
 
 
+def last_health_sync_path(tokenstore: str) -> str:
+    return os.path.join(tokenstore, "last_health_sync")
+
+
+def read_last_health_sync(tokenstore: str) -> str | None:
+    path = last_health_sync_path(tokenstore)
+    if os.path.exists(path):
+        return Path(path).read_text().strip() or None
+    return None
+
+
+def write_last_health_sync(tokenstore: str, date_str: str) -> None:
+    Path(last_health_sync_path(tokenstore)).write_text(date_str)
+
+
+def health_dates_to_fetch(tokenstore: str, output_dir: Path) -> list[str]:
+    """Return dates that need a health summary fetch.
+
+    - All days from last_health_sync up to yesterday (complete, fetch once).
+    - Today is always included if it already exists in the index — re-fetch
+      to pick up data accumulated since the last run.
+    - If no last_health_sync, default to the last 7 days.
+    """
+    yesterday = (date_cls.today() - timedelta(days=1)).isoformat()
+    today = date_cls.today().isoformat()
+
+    last = read_last_health_sync(tokenstore)
+    if last:
+        # All days from day after last sync up to yesterday
+        start = date_cls.fromisoformat(last) + timedelta(days=1)
+        end = date_cls.fromisoformat(yesterday)
+        dates = []
+        current = start
+        while current <= end:
+            dates.append(current.isoformat())
+            current += timedelta(days=1)
+    else:
+        # First run: fetch last 7 days up to yesterday
+        dates = [
+            (date_cls.today() - timedelta(days=i)).isoformat()
+            for i in range(7, 0, -1)
+        ]
+
+    # Always re-fetch today if a health entry already exists (data may be partial)
+    index_path = output_dir / "Lauftagebuch" / "lauftagebuch.yaml"
+    if index_path.exists():
+        import yaml as _yaml
+        with open(index_path) as f:
+            idx = _yaml.safe_load(f) or {}
+        existing_health_dates = {e.get("date") for e in idx.get("health", [])}
+        if today in existing_health_dates:
+            dates.append(today)
+
+    return dates
+
+
 def init_garmin(tokenstore: str):
     from garminconnect import (
         Garmin,
@@ -422,6 +478,26 @@ def fetch_health_summary(garmin, cdate: str, output_dir: Path) -> None:
     sys.stdout.flush()
 
 
+def run_health_sync(garmin, tokenstore: str, output_dir: Path) -> None:
+    """Fetch all outstanding health summaries and update last_health_sync."""
+    dates = health_dates_to_fetch(tokenstore, output_dir)
+    if not dates:
+        print(">>> Health data already up to date.", file=sys.stderr)
+        return
+
+    yesterday = (date_cls.today() - timedelta(days=1)).isoformat()
+    newest_complete = None
+
+    for cdate in dates:
+        fetch_health_summary(garmin, cdate, output_dir)
+        if cdate <= yesterday:
+            newest_complete = cdate
+
+    if newest_complete:
+        write_last_health_sync(tokenstore, newest_complete)
+        print(f">>> Health sync complete through {newest_complete}.", file=sys.stderr)
+
+
 def load_config(user: str) -> tuple[Path, Path]:
     """Returns (output_dir, fit_dir)."""
     config = Path.home() / ".marathon-coach" / user / "config.yaml"
@@ -438,13 +514,20 @@ def main() -> None:
     if len(sys.argv) < 2:
         die("Usage: fetch-fit-garmin.py <user> [activity-id|YYYY-MM-DD]\n"
             "       fetch-fit-garmin.py <user> --batch [<count>]\n"
-            "       fetch-fit-garmin.py <user> --health [YYYY-MM-DD]")
+            "       fetch-fit-garmin.py <user> --health [YYYY-MM-DD]\n"
+            "       fetch-fit-garmin.py <user> --health-sync")
 
     user = sys.argv[1]
     tokenstore = str(Path(os.getenv("GARMINTOKENS", f"~/.garminconnect/{user}")).expanduser())
     output_dir, fit_dir = load_config(user)
 
-    # --health mode: fetch daily health summary for one date
+    # --health-sync mode: fetch all outstanding health summaries
+    if len(sys.argv) >= 3 and sys.argv[2] == "--health-sync":
+        garmin = init_garmin(tokenstore)
+        run_health_sync(garmin, tokenstore, output_dir)
+        return
+
+    # --health mode: fetch daily health summary for one specific date
     if len(sys.argv) >= 3 and sys.argv[2] == "--health":
         cdate = sys.argv[3] if len(sys.argv) >= 4 else (date_cls.today() - timedelta(days=1)).isoformat()
         garmin = init_garmin(tokenstore)
@@ -463,7 +546,6 @@ def main() -> None:
             activities = garmin.get_activities_by_date(last_sync, today)
             if isinstance(activities, dict):
                 activities = activities.get("activityList", [])
-            # get_activities_by_date returns oldest-first; reverse for newest-first
             activities = list(reversed(activities or []))[:count]
         else:
             print(f">>> First sync — fetching {count} most recent activities …", file=sys.stderr)
@@ -473,23 +555,19 @@ def main() -> None:
             activities = (activities or [])[:count]
 
         newest_date = None
-        activity_dates = set()
         for activity in activities:
             print("---ACTIVITY---")
             sys.stdout.flush()
             date_str = emit_activity(activity, garmin, fit_dir)
-            if date_str:
-                activity_dates.add(date_str)
-                if newest_date is None or date_str > newest_date:
-                    newest_date = date_str
-
-        # Fetch health summaries for each unique activity date
-        for cdate in sorted(activity_dates):
-            fetch_health_summary(garmin, cdate, output_dir)
+            if date_str and (newest_date is None or date_str > newest_date):
+                newest_date = date_str
 
         if newest_date:
             write_last_sync(tokenstore, newest_date)
-            print(f">>> Sync complete. Last sync updated to {newest_date}.", file=sys.stderr)
+            print(f">>> Activity sync complete through {newest_date}.", file=sys.stderr)
+
+        # Fetch all outstanding health summaries (incremental, re-fetches today)
+        run_health_sync(garmin, tokenstore, output_dir)
         return
 
     # Single-activity mode
@@ -497,6 +575,9 @@ def main() -> None:
     garmin = init_garmin(tokenstore)
     activity = resolve_activity(garmin, arg)
     emit_activity(activity, garmin, fit_dir)
+
+    # After each single activity, catch up on outstanding health data
+    run_health_sync(garmin, tokenstore, output_dir)
 
 
 if __name__ == "__main__":
