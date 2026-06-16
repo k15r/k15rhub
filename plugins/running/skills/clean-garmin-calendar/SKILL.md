@@ -1,0 +1,69 @@
+---
+name: clean-garmin-calendar
+description: >-
+  Removes all scheduled workouts from Garmin Connect for a given user, from today
+  onward. Optionally also deletes the workout definitions from the library. Use this
+  to clear the Garmin calendar before a full re-sync, or when a training plan changes
+  significantly. Requires garmin_email in config.
+argument-hint: "[user=<name>] [--library]"
+allowed-tools:
+  - Read(~/.marathon-coach/**)
+  - Read(~/.garminconnect/**)
+  - Write(~/.garminconnect/**)
+---
+
+# Clean Garmin Calendar
+
+Removes all scheduled workouts from the Garmin Connect calendar from today onward.
+
+**User arguments:** `$ARGUMENTS`
+
+- `user=<name>` *(optional)* — which user's config to use
+- `--library` *(optional)* — also delete the workout definitions from the Garmin library (not just the calendar entries)
+
+---
+
+## Step 0 — Resolve user
+
+Check `$ARGUMENTS` for `user=<name>`, then list `~/.marathon-coach/` subdirs, use the only one or ask if multiple.
+
+Set `CONFIG=~/.marathon-coach/<USER>/config.yaml`. Read `garmin_email` from config.
+
+If `garmin_email` is not set, inform the user and stop.
+
+---
+
+## Step 1 — Confirm
+
+Tell the user what will be deleted and ask for confirmation before proceeding:
+
+> "This will remove all scheduled Garmin workouts from today onward for **<USER>**.
+> [If --library: It will also delete the workout definitions from your Garmin library.]
+> Continue? (yes/no)"
+
+Wait for explicit confirmation. Abort if anything other than yes/y.
+
+---
+
+## Step 2 — Run cleanup script
+
+```bash
+uv run --script <skill-dir>/clean-garmin-calendar.py <USER> [--library]
+```
+
+The script:
+
+1. Fetches scheduled workouts for the current month and the next 3 months
+2. Filters to entries whose date ≥ today
+3. Calls `unschedule_workout(scheduled_id)` for each
+4. If `--library` was passed: collects the unique `workoutId` values and calls `delete_workout(workout_id)` for each
+
+---
+
+## Step 3 — Report
+
+After the script finishes, report:
+
+- How many calendar entries were removed and across which date range
+- How many workout definitions were deleted from the library (if `--library`)
+- Suggest running `/sync-garmin` to push the current plan back to the calendar
