@@ -413,7 +413,7 @@ Session type fields:
 | `easy` | `subtype: jogging\|dauerlauf`, `duration_min`, `pace_range` (e.g. `"5:35–5:45"`) |
 | `tempo` | `distance_km`, `pace_range` |
 | `long_run` | `distance_km` OR `duration_min` (one required), `pace_range`; if structured: add `with_efforts: true`, `easy_pace`, `effort_pace`, `effort_reps`, `effort_km`, `recovery_km` (structured requires `distance_km`) |
-| `intervals` | `reps`, `distance_m`, `pace_range`, `recovery_type: distance\|time`, then `recovery_m` or `recovery_min`; optional `label` (e.g. `"HM-Pace"`) |
+| `intervals` | `reps`, (`distance_m` OR `effort_min`), `pace_range`, `recovery_type: distance\|time`, then `recovery_m`, `recovery_min`, or `recovery_sec`; optional `warmup_min`, `cooldown_min`, `label` |
 | `race` | `distance_km`, `goal_time` |
 
 `pace_range` is always `"M:SS–M:SS"` in min:sec per km. Never use descriptors like "HM-Pace" as the pace value — always resolve to actual min:sec. Use `label` for display only.
