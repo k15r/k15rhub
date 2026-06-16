@@ -33,7 +33,7 @@ import json
 import os
 import sys
 import yaml
-from datetime import date as date_cls
+from datetime import date as date_cls, timedelta
 from pathlib import Path
 
 
@@ -594,12 +594,21 @@ def delete_date_workouts(garmin, tokenstore: str, date_str: str) -> None:
     untrack_date(tokenstore, date_str)
 
 
-def process_week(garmin, tokenstore: str, yaml_path: Path, future_only: bool = False) -> None:
+def process_week(garmin, tokenstore: str, yaml_path: Path,
+                 future_only: bool = False, horizon: str | None = None) -> None:
+    """Upload sessions from a week YAML.
+    future_only: skip today and earlier.
+    horizon: skip sessions after this date (default: today + 7 days).
+    """
     data = load_week_yaml(yaml_path)
     today = date_cls.today().isoformat()
+    if horizon is None:
+        horizon = (date_cls.today() + timedelta(days=7)).isoformat()
     for session in data.get("sessions", []):
         date_str = session.get("date", "")
         if future_only and date_str <= today:
+            continue
+        if date_str > horizon:
             continue
         spec = session_to_workout(session)
         if spec is None:
