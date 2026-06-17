@@ -541,13 +541,15 @@ For each block:
 
 Then parse `CHANGED_DATES: <comma-separated dates or "none">` from the agent response.
 
-If `garmin_email` is set in `$CONFIG` and `CHANGED_DATES` is not "none", delete and re-upload Garmin workouts for each changed date that is strictly in the future (tomorrow or later). Run the YAML write above before this step so the `.yaml` is current:
+If `garmin_email` is set in `$CONFIG` and `CHANGED_DATES` is not "none", delete and re-upload Garmin workouts for each changed date that is **strictly after today and within the next 7 days** (same horizon as `--week`). Dates beyond 7 days are skipped — they will be picked up by the next `/sync-garmin` run:
 
 ```bash
-# For each changed date > today:
+# For each changed date that is > today AND ≤ today + 7 days:
 uv run --script <skill-dir>/push-workouts-garmin.py $USER --delete-date <YYYY-MM-DD>
 uv run --script <skill-dir>/push-workouts-garmin.py $USER --week <rewritten-week-yaml-path>
 ```
+
+Pass the `.yaml` path (not `.md`) to `--week` — both files are rewritten by the agent, and the script reads the YAML.
 
 Run push-workouts silently — if it fails, log the error but do not block the user.
 

@@ -599,6 +599,7 @@ def process_week(garmin, tokenstore: str, yaml_path: Path,
     """Upload sessions from a week YAML.
     future_only: skip today and earlier.
     horizon: skip sessions after this date (default: today + 7 days).
+    Deletes any previously tracked workout for each date before uploading.
     """
     data = load_week_yaml(yaml_path)
     today = date_cls.today().isoformat()
@@ -613,6 +614,8 @@ def process_week(garmin, tokenstore: str, yaml_path: Path,
         spec = session_to_workout(session)
         if spec is None:
             continue
+        # Delete any existing tracked workout for this date before uploading
+        delete_date_workouts(garmin, tokenstore, date_str)
         upload_and_schedule(garmin, tokenstore, date_str, spec)
 
 

@@ -35,13 +35,12 @@ If `garmin_email` is not set, inform the user and stop.
 
 ## Step 1 — Confirm
 
-Tell the user what will be deleted and ask for confirmation before proceeding:
+Tell the user what will be deleted and ask for confirmation before proceeding. Use the user's configured language (`language` field in config — `de` or `en`):
 
-> "This will remove all scheduled Garmin workouts from today onward for **<USER>**.
-> [If --library: It will also delete the workout definitions from your Garmin library.]
-> Continue? (yes/no)"
+- German: *"Dies löscht alle geplanten Garmin-Trainingseinheiten ab heute für **<USER>**. [Falls --library: Auch die Einheitendefinitionen aus der Garmin-Bibliothek werden gelöscht.] Fortfahren? (ja/nein)"*
+- English: *"This will remove all scheduled Garmin workouts from today onward for **<USER>**. [If --library: It will also delete the workout definitions from your Garmin library.] Continue? (yes/no)"*
 
-Wait for explicit confirmation. Abort if anything other than yes/y.
+Wait for explicit confirmation. Abort if anything other than yes/y/ja/j.
 
 ---
 

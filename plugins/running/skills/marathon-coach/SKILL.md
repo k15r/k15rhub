@@ -10,8 +10,10 @@ allowed-tools:
   - Read(./**)
   - Edit(./**)
   - Write(./**)
+  - Read(~/.marathon-coach/**)
   - Edit(~/.marathon-coach/**)
   - Write(~/.marathon-coach/**)
+  - Read(~/.garminconnect/**)
 ---
 
 # Marathon Coach
@@ -125,7 +127,7 @@ bash <skill-dir>/fetch-recent-activities.sh $USER [count]   # default: 5
 
 Read `current_plan` from `$CONFIG`.
 
-If `current_plan` is set, look for plan files under `<output_dir>/<race-type-folder>/<current_plan>/` where `<race-type-folder>` is derived from `race_type` in config (or `$RACE_TYPE_OVERRIDE` if set) by title-casing and replacing hyphens with spaces (e.g. `marathon` → `Marathon`, `half-marathon` → `Half-Marathon`, `10k` → `10k`).
+If `current_plan` is set, look for plan files under `<output_dir>/<race-type-folder>/<current_plan>/` where `<race-type-folder>` is derived from `race_type` in config (or `$RACE_TYPE_OVERRIDE` if set) by title-casing each hyphen-separated word (e.g. `marathon` → `Marathon`, `half-marathon` → `Half-Marathon`, `10k` → `10k`). Hyphens are preserved — do not replace them with spaces.
 
 If `current_plan` is empty or the directory does not exist: scan `<output_dir>/` for subdirectories that contain a directory matching the slug pattern `<race-type>-<YYYY-MM-DD>`. If multiple are found, ask the user which one to use. If none are found, treat plan context as absent. Skip this scan entirely when ACTION is `new`.
 
@@ -191,4 +193,4 @@ If ACTION is `sync`, skip the agent entirely and go directly to the Garmin push:
 uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --plan <plan-dir>/
 ```
 
-This pushes all sessions within the next 7 days (the script enforces this horizon automatically). Report how many workouts were pushed and on which dates.
+This pushes all sessions within the next 7 days, replacing any previously scheduled workouts for those dates. Report how many workouts were pushed and on which dates.

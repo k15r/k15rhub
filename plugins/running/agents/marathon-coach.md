@@ -103,7 +103,7 @@ From each week YAML:
 - `total_km` — planned weekly volume
 - `phase` — current training phase
 
-For `update` or `status`: compare `ACTIVITY_HISTORY` entries against their matching session in the week YAML (match by `date` and `planwoche`). Identify:
+For `update` or `status`: compare `ACTIVITY_HISTORY` entries against their matching session in the week YAML. Match by `date` first; if no `date` match, fall back to matching by `planwoche` + day-of-week. Free runs (no `planwoche` field) are not matched against the plan. Identify:
 - Missed sessions: date in plan has a non-rest session but no matching ACTIVITY_HISTORY entry
 - Off-pace sessions: `pace` deviates > 15 s/km from `soll_pace`
 - TE below expected: `training_effect` < 2.0 for quality sessions

@@ -48,7 +48,7 @@ If `garmin_email` is not set, inform the user and stop:
 Determine scope from remaining arguments:
 
 - `week <path>` → sync that specific week YAML
-- `week` (no path) → find the current week YAML (whose `dates.start`–`dates.end` contains today)
+- `week` (no path) → find the current week YAML (whose `dates.start`–`dates.end` contains today). If today falls outside all week ranges (before plan start or after plan end), inform the user and stop.
 - `plan <path>` → sync all future weeks in that plan directory
 - `plan` or no argument → derive plan directory from `current_plan` and `race_type`:
   `<output_dir>/<Race-Type-Folder>/<current_plan>/`
