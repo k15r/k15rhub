@@ -9,6 +9,7 @@ description: >-
   plan current.
 argument-hint: "[user=<name>] [optional: activity ID or date YYYY-MM-DD — default: latest activity]"
 allowed-tools:
+  - Read(./**)
   - Edit(./**)
   - Write(./**)
   - Read(~/.marathon-coach/**)
@@ -113,7 +114,7 @@ From `lap` records (running and cycling):
 
 ## Step 3 — Determine activity type and context
 
-Read `current_plan` from `$CONFIG`. If set, load the plan index and current week file.
+Read `current_plan` from `$CONFIG`. If set, load the current week YAML.
 
 ### Activity type mapping
 
@@ -146,13 +147,14 @@ Read `current_plan` from `$CONFIG`. If set, load the plan index and current week
 
 ## Step 4 — Read the plan for Soll values
 
-Only for **running** activities when `current_plan` is set and a matching day/type is found in the week file:
+Only for **running** activities when `current_plan` is set and a matching session is found in the current week YAML:
 
-From the weekly plan file, find the matching workout entry (by day/type) and note:
+Read the session whose `date` matches today from the week YAML and extract:
 
-- Target duration (Soll minutes)
-- Target pace (Soll min/km) → derive target distance as Soll_min ÷ Soll_pace_min_per_km
-- Any special workout structure
+- `soll_pace` → target pace (M:SS–M:SS per km)
+- `duration_min` → target duration in minutes
+- `distance_km` → target distance (if specified); otherwise derive as `duration_min ÷ pace_midpoint_min_per_km`
+- Any special workout structure (`type`, `reps`, `effort_min`, etc.)
 
 For non-running activities, skip Soll comparison entirely.
 
@@ -352,8 +354,8 @@ date: "YYYY-MM-DD"
 type: <type_lowercase>        # jogging, dauerlauf, intervall, tempo, laufen, radfahren, kraft, …
 sport: <running|cycling|strength|other>
 activity_id: "<id>"
-source: <garmin|runalyze>
-title: "<Runalyze/Garmin title>"
+source: garmin
+title: "<Garmin activity title>"
 distance_km: X.XX             # 0 for strength/yoga
 duration: "H:MM:SS"
 timer_time: "H:MM:SS"
@@ -557,8 +559,7 @@ Then display the agent's `COACHING_NOTE:` to the user.
 
 - **Cadence ×2**: fit-analyzer reports per-leg cadence for running. Always multiply by 2.
 - **Effective pace**: exclude "Uhr nicht gestoppt" and pause laps from pace calculation.
-- **FIT original**: always download via `/fit-original` endpoint.
 - **German locale**: comma as decimal separator.
-- **Soll distance**: calculate as `Soll_minutes / Soll_pace_per_km`.
+- **Soll distance**: calculate as `Soll_minutes / Soll_pace_per_km`, or read directly from the week YAML's `distance_km` field.
 - **current_plan**: always read from `$CONFIG` — never hardcode a plan name.
 - **adapt-week**: skip if `current_plan` is empty; never block the user waiting for agent output if the agent fails — log the error and continue.

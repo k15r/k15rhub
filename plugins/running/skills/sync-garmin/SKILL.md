@@ -43,7 +43,7 @@ Read `current_plan`, `output_dir`, `race_type`, and `garmin_email` from `$CONFIG
 
 If `garmin_email` is not set, inform the user and stop:
 > "Garmin sync requires `garmin_email` in `~/.marathon-coach/<USER>/config.yaml`.
-> Add it and run `/marathon-coach` once interactively to create the token cache."
+> Add it and run `/analyze-activity` once interactively to create the token cache."
 
 Determine scope from remaining arguments:
 
@@ -63,7 +63,7 @@ The `push-workouts-garmin.py` script lives alongside `analyze-activity` in the p
 
 **For a single week:**
 
-1. Read the week YAML to identify all non-rest session dates that are strictly after today.
+1. Read the week YAML to identify all non-rest session dates that are strictly after today **and within the next 7 days** (the same horizon enforced by `--week`).
 2. For each such date, delete any previously scheduled workout:
 
 ```bash

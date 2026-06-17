@@ -1,10 +1,10 @@
 ---
 name: marathon-coach
 description: >-
-  Running coach for any race distance. Receives user config, recent run data
-  (from Lauftagebuch entries or fit-analyzer output), and existing plan context from
-  the calling skill. Creates or updates training plans and writes them to the output
-  directory. Never asks the user questions — all context is supplied by the skill.
+  Running coach for any race distance. Receives user config, recent activity and health
+  data from the Lauftagebuch YAML index, and existing plan context from the calling skill.
+  Creates or updates training plans and writes them to the output directory.
+  Never asks the user questions — all context is supplied by the skill.
 ---
 
 # Marathon Coach Agent

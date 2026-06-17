@@ -57,13 +57,40 @@ def init_garmin(tokenstore: str):
         die(f"Garmin rate limit: {e}")
 
 
-def get_future_scheduled(garmin) -> list[dict]:
-    """Fetch scheduled workouts for the current month + next 3 months."""
+def read_yaml_field(path: str, field: str) -> str:
+    try:
+        with open(path) as f:
+            for line in f:
+                if line.startswith(f"{field}:"):
+                    return line.split(":", 1)[1].strip().strip('"').strip("'")
+    except FileNotFoundError:
+        pass
+    return ""
+
+
+def get_future_scheduled(garmin, user: str) -> list[dict]:
+    """Fetch scheduled workouts from today through race_date (or at least 4 months)."""
     today = date_cls.today()
+
+    # Determine coverage end from race_date in config
+    config = Path.home() / ".marathon-coach" / user / "config.yaml"
+    race_date_str = read_yaml_field(str(config), "race_date")
+    if race_date_str:
+        try:
+            race_date = date_cls.fromisoformat(race_date_str)
+            end_date = race_date if race_date > today else today
+        except ValueError:
+            end_date = today
+    else:
+        end_date = today
+
+    # Calculate months to cover (minimum 4)
+    months_needed = max(4, (end_date.year - today.year) * 12 + end_date.month - today.month + 1)
+
     entries = []
     seen_ids = set()
 
-    for month_offset in range(4):
+    for month_offset in range(months_needed):
         year = today.year + (today.month - 1 + month_offset) // 12
         month = (today.month - 1 + month_offset) % 12 + 1
         result = garmin.get_scheduled_workouts(year, month)
@@ -102,7 +129,7 @@ def main() -> None:
     garmin = init_garmin(tokenstore)
 
     print(">>> Fetching scheduled workouts …", file=sys.stderr)
-    entries = get_future_scheduled(garmin)
+    entries = get_future_scheduled(garmin, user)
 
     if not entries:
         print("No future scheduled workouts found.")

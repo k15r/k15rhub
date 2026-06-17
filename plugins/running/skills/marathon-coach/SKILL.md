@@ -96,9 +96,9 @@ Confirm the file was written, then continue to Step 2.
 
 ---
 
-## Step 2 — Gather run history
+## Step 2 — Gather activity history
 
-Read `$CONFIG` and parse `output_dir`, `runalyze_token`, and `current_plan`.
+Read `$CONFIG` and parse `output_dir` and `current_plan`.
 
 ### 2a — Lauftagebuch (primary source)
 
@@ -163,7 +163,8 @@ Invoke the `marathon-coach` agent with the following prompt, substituting all co
 >
 > **PLAN_CONTEXT** (`<found | none>`)**:**
 > ```yaml
-> <full YAML content of current week + 2 prior week files, separated by "---">
+> <full YAML content of current week + 2 prior week files, separated by "---",
+>  or "none" if no plan exists or ACTION is "new">
 > ```
 >
 > Proceed according to your instructions. When you create or activate a plan, return the plan slug on its own line as: `PLAN_SLUG: <slug>`

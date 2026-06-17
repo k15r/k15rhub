@@ -53,7 +53,7 @@ uv run --script <skill-dir>/clean-garmin-calendar.py <USER> [--library]
 
 The script:
 
-1. Fetches scheduled workouts for the current month and the next 3 months
+1. Reads `race_date` from config to determine coverage end. Fetches scheduled workouts for all months from today through `race_date` (at least 4 months ahead if `race_date` is not set or already past).
 2. Filters to entries whose date ≥ today
 3. Calls `unschedule_workout(scheduled_id)` for each
 4. If `--library` was passed: collects the unique `workoutId` values and calls `delete_workout(workout_id)` for each
