@@ -1,7 +1,7 @@
 ---
 name: analyze-activity
 description: >-
-  Fetches the latest (or a specified) activity from Garmin Connect or Runalyze, downloads
+  Fetches the latest (or a specified) activity from Garmin Connect, downloads
   the original FIT file, analyzes it with fit-analyzer, writes a standardized Lauftagebuch
   entry (markdown + YAML) to the Zettelkasten, and triggers adaptive weekly plan adjustment
   via the marathon-coach agent. Works for any sport type (running, cycling, swimming,
@@ -53,10 +53,7 @@ Where `$ACTIVITY_ARGUMENT` is the remaining argument after stripping `user=<name
 
 The script checks that `fit-analyzer` is installed and exits with an error if not — install it from https://github.com/k15r/fit-analyzer
 
-The source is auto-detected from config:
-
-- `garmin_email` set → uses Garmin Connect via `fetch-fit-garmin.py` (requires `uv`; dependencies are installed automatically on first run via PEP 723 inline metadata). After downloading the activity, the script automatically fetches health summaries for all days since the last health sync up to yesterday (complete data), and re-fetches today if a partial entry already exists.
-- `runalyze_token` set → uses Runalyze API directly
+The source is Garmin Connect via `fetch-fit-garmin.py` (requires `uv`; dependencies are installed automatically on first run via PEP 723 inline metadata). After downloading the activity, the script automatically fetches health summaries for all days since the last health sync up to yesterday (complete data), and re-fetches today if a partial entry already exists.
 
 - No argument → latest activity (any sport)
 - Numeric ID → that specific activity
@@ -136,7 +133,7 @@ Read `current_plan` from `$CONFIG`. If set, load the plan index and current week
 - `Radfahren` — any cycling
 - `Schwimmen` — swimming
 - `Kraft` — strength training, gym, yoga
-- `<Runalyze title>` — anything else (use the title as-is, sanitised)
+- `<activity title>` — anything else (use the title as-is, sanitised)
 
 ### File naming convention
 

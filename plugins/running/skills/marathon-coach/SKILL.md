@@ -2,8 +2,8 @@
 name: marathon-coach
 description: >-
   Running coach for any race distance. Creates and updates training plans based on
-  the user's fitness level, goals, and recent activity history (Garmin Connect, Runalyze,
-  or manually provided). Adapts to any experience level and race type (5k, 10k,
+  the user's fitness level, goals, and recent activity history from Garmin Connect.
+  Adapts to any experience level and race type (5k, 10k,
   half-marathon, marathon, ultramarathon). Supports onboarding for new users.
 argument-hint: "[user=<name>] [race=<type>] [new | update | status | sync | <coaching question>]"
 allowed-tools:
@@ -74,9 +74,7 @@ Check whether `$CONFIG` exists.
    - advanced: multiple races at this distance / 60+ km/week
 8. **Notes / constraints** — injuries, constraints, preferences (may be empty)
 9. **Output directory** — base path where plan files will be written
-10. **Activity source** *(choose one)*:
-    - **Runalyze token** — paste token from your Runalyze account settings
-    - **Garmin Connect email** — your Garmin Connect login email (requires `uv`; tokens stored in `~/.garminconnect/` after first interactive login; password is never saved)
+10. **Garmin Connect email** — your Garmin Connect login email (requires `uv`; tokens stored in `~/.garminconnect/` after first interactive login; password is never saved)
 
 Create `$CONFIG_DIR` if it does not exist, then write `$CONFIG`:
 
@@ -84,8 +82,7 @@ Create `$CONFIG_DIR` if it does not exist, then write `$CONFIG`:
 name: <name>
 language: <de|en>
 output_dir: <output_dir>
-runalyze_token: "<token or empty>"
-garmin_email: "<email or empty>"
+garmin_email: "<email>"
 race_type: <e.g. marathon, half-marathon, 10k, 50k>
 race_date: <YYYY-MM-DD>
 goal_time: "<HH:MM or descriptor>"
@@ -107,9 +104,9 @@ Read `$CONFIG` and parse `output_dir`, `runalyze_token`, and `current_plan`.
 
 Check whether `<output_dir>/Lauftagebuch/lauftagebuch.yaml` exists (written by the `analyze-activity` skill).
 
-If it exists: read the last 14 entries from both the `entries` and `health` lists. This is the structured source of truth — use it in preference to the markdown index.
+If it exists: read the last 14 entries from both the `entries` and `health` lists. This is the structured source of truth.
 
-### 2b — FIT files fallback
+### 2b — Fallback
 
 If no Lauftagebuch exists, run:
 
@@ -118,8 +115,8 @@ bash <skill-dir>/fetch-recent-activities.sh $USER [count]   # default: 5
 ```
 
 - `NO_CONFIG` → jump back to Step 1
-- `NO_TOKEN` → no Runalyze token and no `garmin_email` configured; ask the user to paste a summary of their 3–5 most recent activities (any format) and collect their reply
-- Non-zero exit with an auth error message → Garmin token cache missing; tell the user to run `analyze-activity` once interactively to create it, then retry
+- `NO_TOKEN` → `garmin_email` not set in config; run onboarding and add it, then log in once interactively with `/analyze-activity`
+- Non-zero exit with an auth error → Garmin token cache missing; tell the user to run `/analyze-activity` once interactively to create it, then retry
 - Otherwise: collect the full script output (all `---ACTIVITY--- / ---FIT-ANALYZER---` blocks)
 
 ---
@@ -181,20 +178,16 @@ If `garmin_email` is set in `$CONFIG` and ACTION was `new` or `update`, push the
 uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --plan <output_dir>/<Race-Type-Folder>/<plan-slug>/
 ```
 
-This uploads and schedules all sessions as structured workouts. Run silently in the background — if it fails, log the error but do not block the user.
+This uploads and schedules sessions within the next 7 days as structured workouts. Run silently in the background — if it fails, log the error but do not block the user. Inform the user that only the next 7 days are pushed to Garmin; run `/sync-garmin` each week to keep the calendar current.
 
 If ACTION is `sync`, skip the agent entirely and go directly to the Garmin push:
 
-1. Read `current_plan` and `output_dir` from `$CONFIG`. If `current_plan` is empty, inform the user that no active plan is set.
+1. Read `current_plan`, `output_dir`, and `garmin_email` from `$CONFIG`. If `current_plan` is empty, inform the user that no active plan is set. If `garmin_email` is not set, inform the user that Garmin sync requires `garmin_email` in the config.
 2. Derive the plan directory: `<output_dir>/<Race-Type-Folder>/<current_plan>/`
-3. For each future week YAML (week whose `dates.end` ≥ today):
-   a. For each non-rest session whose `date` is strictly after today:
-      - Delete any previously scheduled Garmin workout for that date
-   b. Re-upload the full week:
+3. Run:
 
 ```bash
-uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --delete-date <YYYY-MM-DD>
-uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --week <week-yaml-path>
+uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --plan <plan-dir>/
 ```
 
-Report how many workouts were pushed and on which dates. If `garmin_email` is not set in `$CONFIG`, inform the user that Garmin sync requires `garmin_email` in the config.
+This pushes all sessions within the next 7 days (the script enforces this horizon automatically). Report how many workouts were pushed and on which dates.
