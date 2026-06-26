@@ -510,16 +510,55 @@ def load_config(user: str) -> tuple[Path, Path]:
     return output_dir, output_dir / "Lauftagebuch" / "fit"
 
 
+def list_activities(garmin, count: int) -> None:
+    """Print a human-readable table of recent activities to stdout."""
+    activities = garmin.get_activities(0, count)
+    if isinstance(activities, dict):
+        activities = activities.get("activityList", [])
+    activities = activities or []
+
+    if not activities:
+        print("No activities found.")
+        return
+
+    col_w = [12, 10, 10, 8, 8, 40]
+    header = ["ACTIVITY_ID", "DATE", "DIST_KM", "DUR_MIN", "TYPE", "TITLE"]
+    sep = "| " + " | ".join("-" * w for w in col_w) + " |"
+
+    def fmt_row(cells):
+        return "| " + " | ".join(str(c).ljust(w) for c, w in zip(cells, col_w)) + " |"
+
+    print(fmt_row(header))
+    print(sep)
+    for a in activities:
+        activity_id = str(a.get("activityId", ""))
+        raw_date = (a.get("startTimeLocal") or a.get("beginTimestamp") or "")[:10]
+        distance_km = round((a.get("distance") or 0) / 1000, 2)
+        duration_sec = int(a.get("duration") or a.get("elapsedDuration") or 0)
+        dur_min = duration_sec // 60
+        title = a.get("activityName") or a.get("activityDescription") or ""
+        type_hint = type_hint_from_title(title)
+        print(fmt_row([activity_id, raw_date, distance_km, dur_min, type_hint, title[:40]]))
+
+
 def main() -> None:
     if len(sys.argv) < 2:
         die("Usage: fetch-fit-garmin.py <user> [activity-id|YYYY-MM-DD]\n"
             "       fetch-fit-garmin.py <user> --batch [<count>]\n"
+            "       fetch-fit-garmin.py <user> --list [<count>]\n"
             "       fetch-fit-garmin.py <user> --health [YYYY-MM-DD]\n"
             "       fetch-fit-garmin.py <user> --health-sync")
 
     user = sys.argv[1]
     tokenstore = str(Path(os.getenv("GARMINTOKENS", f"~/.garminconnect/{user}")).expanduser())
     output_dir, fit_dir = load_config(user)
+
+    # --list mode: show recent activities without downloading
+    if len(sys.argv) >= 3 and sys.argv[2] == "--list":
+        count = int(sys.argv[3]) if len(sys.argv) >= 4 else 20
+        garmin = init_garmin(tokenstore)
+        list_activities(garmin, count)
+        return
 
     # --health-sync mode: fetch all outstanding health summaries
     if len(sys.argv) >= 3 and sys.argv[2] == "--health-sync":

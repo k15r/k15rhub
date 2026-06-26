@@ -6,8 +6,8 @@ description: >-
   entry (markdown + YAML) to the Zettelkasten, and triggers adaptive weekly plan adjustment
   via the marathon-coach agent. Works for any sport type (running, cycling, swimming,
   strength, etc.). Use this skill after any activity to document it and keep the training
-  plan current.
-argument-hint: "[user=<name>] [optional: activity ID or date YYYY-MM-DD — default: latest activity]"
+  plan current. Pass `list` or `list <N>` to browse recent activities without downloading.
+argument-hint: "[user=<name>] [list [<count>] | activity ID | YYYY-MM-DD]"
 allowed-tools:
   - Read(./**)
   - Edit(./**)
@@ -22,6 +22,7 @@ allowed-tools:
 **User arguments:** `$ARGUMENTS`
 
 - `user=<name>` *(optional)* — which user's config to use
+- `list [<count>]` — list recent activities without downloading (default 20); stop after displaying the table
 - Remaining argument: optional activity ID or date (YYYY-MM-DD). Default: fetch the latest activity.
 
 ---
@@ -44,7 +45,15 @@ Set `CONFIG_DIR=~/.marathon-coach/<USER>/` and `CONFIG=<CONFIG_DIR>/config.yaml`
 
 Read `output_dir` and `current_plan` from `$CONFIG`.
 
-Run the fetch script (located in the same directory as this skill file):
+If the remaining argument (after stripping `user=<name>`) starts with `list`, run in list mode:
+
+```bash
+bash <skill-dir>/fetch-fit.sh $USER --list [<count>]
+```
+
+Display the printed table to the user and **stop — do not proceed to Steps 2–9**. The user can then re-invoke the skill with a specific activity ID or date from the table.
+
+Otherwise, run the fetch script to download an activity:
 
 ```bash
 bash <skill-dir>/fetch-fit.sh $USER $ACTIVITY_ARGUMENT
