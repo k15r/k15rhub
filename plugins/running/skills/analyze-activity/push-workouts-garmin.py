@@ -319,6 +319,21 @@ def recovery_time(order: int, secs: float) -> dict:
     return make_step(order, 4, "recovery", 2, "time", secs, no_target())
 
 
+def recovery_lap(order: int) -> dict:
+    """Recovery ending on lap button — runner decides when recovered enough."""
+    step = {
+        "type": "ExecutableStepDTO",
+        "stepOrder": order,
+        "stepType": {"stepTypeId": 4, "stepTypeKey": "recovery", "displayOrder": 4},
+        "endCondition": {
+            "conditionTypeId": 1, "conditionTypeKey": "lap.button",
+            "displayOrder": 1, "displayable": True,
+        },
+        "targetType": no_target()["targetType"],
+    }
+    return step
+
+
 def recovery_distance(order: int, metres: float) -> dict:
     return make_step(order, 4, "recovery", 3, "distance", metres, no_target())
 
@@ -352,6 +367,51 @@ def build_workout_payload(name: str, steps: list, estimated_secs: int) -> dict:
     }
 
 
+def append_strides(steps: list, strides: dict, base_order: int, estimated_secs: int) -> tuple[list, int]:
+    """Append a strides block to an existing step list.
+
+    strides fields (all optional with sensible defaults):
+      reps        int   — number of strides (default 4)
+      distance_m  int   — distance per stride in metres (default 100)
+      pace_note   str   — hint shown in workout name, e.g. "~3:30" (not enforced as zone)
+
+    Structure appended:
+      <base_order>   main/lap-button  — "run to stride start, press lap when ready"
+      <base_order+1> repeat N× [interval_distance, recovery_lap]
+
+    Returns (updated_steps, updated_estimated_secs).
+    """
+    reps = int(strides.get("reps", 4))
+    dist_m = float(strides.get("distance_m", 100))
+    pace_note = strides.get("pace_note", "")
+
+    # Transition step: press lap when you reach the start of your stride section
+    transition = {
+        "type": "ExecutableStepDTO",
+        "stepOrder": base_order,
+        "stepType": {"stepTypeId": 8, "stepTypeKey": "main", "displayOrder": 8},
+        "endCondition": {
+            "conditionTypeId": 1, "conditionTypeKey": "lap.button",
+            "displayOrder": 1, "displayable": True,
+        },
+        "targetType": no_target()["targetType"],
+        "description": "Laufe zur Startzone der Steigerungen, dann Runde drücken",
+    }
+
+    stride_step = interval_distance(1, dist_m, no_target())
+    rec_step = recovery_lap(2)
+    rg = repeat_group(base_order + 1, reps, [stride_step, rec_step])
+
+    label = f"{reps}×{int(dist_m)}m"
+    if pace_note:
+        label += f" {pace_note}"
+
+    # Estimated time: ~15 s per stride + ~45 s recovery each, plus ~30 s transition
+    stride_est = int(reps * (15 + 45) + 30)
+
+    return steps + [transition, rg], estimated_secs + stride_est
+
+
 # ---------------------------------------------------------------------------
 # Session → Garmin workout (from YAML session dict)
 # ---------------------------------------------------------------------------
@@ -366,18 +426,35 @@ def session_to_workout(session: dict) -> dict | None:
         return None
 
     if stype == "easy":
-        return _easy_workout(session)
-    if stype == "tempo":
-        return _tempo_workout(session)
-    if stype == "long_run":
-        return _long_run_workout(session)
-    if stype == "intervals":
-        return _intervals_workout(session)
-    if stype == "race":
+        spec = _easy_workout(session)
+    elif stype == "tempo":
+        spec = _tempo_workout(session)
+    elif stype == "long_run":
+        spec = _long_run_workout(session)
+    elif stype == "intervals":
+        spec = _intervals_workout(session)
+    elif stype == "race":
         return None  # races are not pre-programmed
+    else:
+        print(f"  SKIP unknown type {stype!r}", file=sys.stderr)
+        return None
 
-    print(f"  SKIP unknown type {stype!r}", file=sys.stderr)
-    return None
+    if spec is None:
+        return None
+
+    # Append strides block if present on any session type
+    strides = session.get("strides")
+    if strides:
+        reps = int(strides.get("reps", 4))
+        dist_m = int(strides.get("distance_m", 100))
+        pace_note = strides.get("pace_note", "")
+        label = f" + {reps}× Steig.{(' ' + pace_note) if pace_note else ''}"
+        spec["name"] = spec["name"] + label
+        spec["steps"], spec["estimated_secs"] = append_strides(
+            spec["steps"], strides, len(spec["steps"]) + 1, spec["estimated_secs"]
+        )
+
+    return spec
 
 
 def _easy_workout(s: dict) -> dict:
@@ -594,6 +671,52 @@ def delete_date_workouts(garmin, tokenstore: str, date_str: str) -> None:
     untrack_date(tokenstore, date_str)
 
 
+def dry_run_week(yaml_path: Path, fmt: str = "table") -> None:
+    """Print what would be uploaded for a week without touching Garmin."""
+    data = load_week_yaml(yaml_path)
+    rows = []
+    payloads = []
+    for session in data.get("sessions", []):
+        date_str = session.get("date", "")
+        stype = session.get("type", "rest")
+        if stype == "rest" or session.get("optional"):
+            continue
+        spec = session_to_workout(session)
+        if spec is None:
+            continue
+        payload = build_workout_payload(spec["name"], spec["steps"], spec["estimated_secs"])
+        rows.append({"date": date_str, "name": spec["name"],
+                     "estimated_min": spec["estimated_secs"] // 60,
+                     "steps": len(spec["steps"])})
+        payloads.append({"date": date_str, "workout": payload})
+
+    if not rows:
+        print("No uploadable sessions found.")
+        return
+
+    if fmt == "json":
+        print(json.dumps(payloads, indent=2))
+    elif fmt == "yaml":
+        print(yaml.dump(payloads, allow_unicode=True, sort_keys=False, default_flow_style=False))
+    else:
+        # tabular — human-readable summary
+        col_w = [10, 35, 10, 7]
+        header = ["DATE", "NAME", "EST_MIN", "STEPS"]
+        sep = "| " + " | ".join("-" * w for w in col_w) + " |"
+
+        def fmt_row(cells):
+            return "| " + " | ".join(str(c).ljust(w) for c, w in zip(cells, col_w)) + " |"
+
+        print(fmt_row(header))
+        print(sep)
+        for r in rows:
+            print(fmt_row([r["date"], r["name"], r["estimated_min"], r["steps"]]))
+
+        # Also print the full payload(s) as JSON so step details are visible
+        print()
+        print(json.dumps(payloads, indent=2))
+
+
 def process_week(garmin, tokenstore: str, yaml_path: Path,
                  future_only: bool = False, horizon: str | None = None) -> None:
     """Upload sessions from a week YAML.
@@ -627,8 +750,8 @@ def main() -> None:
     if len(sys.argv) < 3:
         die(
             "Usage:\n"
-            "  push-workouts-garmin.py <user> --week <week-file>\n"
-            "  push-workouts-garmin.py <user> --plan <plan-dir>\n"
+            "  push-workouts-garmin.py <user> --week <week-file> [--dry-run [--format table|json|yaml]]\n"
+            "  push-workouts-garmin.py <user> --plan <plan-dir>  [--dry-run [--format table|json|yaml]]\n"
             "  push-workouts-garmin.py <user> --delete-date <YYYY-MM-DD>"
         )
 
@@ -636,32 +759,58 @@ def main() -> None:
     mode = sys.argv[2]
     tokenstore = str(Path(os.getenv("GARMINTOKENS", f"~/.garminconnect/{user}")).expanduser())
 
+    args = sys.argv[3:]
+    dry_run = "--dry-run" in args
+    fmt = "table"
+    positional = []
+    i = 0
+    while i < len(args):
+        if args[i] == "--dry-run":
+            i += 1
+        elif args[i] == "--format" and i + 1 < len(args):
+            fmt = args[i + 1]
+            i += 2
+        else:
+            positional.append(args[i])
+            i += 1
+
     if mode == "--delete-date":
-        date_str = sys.argv[3] if len(sys.argv) > 3 else die("Missing date")
+        date_str = positional[0] if positional else die("Missing date")
         garmin = init_garmin(tokenstore)
         delete_date_workouts(garmin, tokenstore, date_str)
         return
 
     if mode == "--week":
-        if len(sys.argv) < 4:
+        if not positional:
             die("Missing week file path")
-        path = Path(sys.argv[3])
+        path = Path(positional[0])
         if not path.exists() and not path.with_suffix(".yaml").exists():
             die(f"File not found: {path}")
+        if dry_run:
+            dry_run_week(path, fmt)
+            return
         garmin = init_garmin(tokenstore)
         process_week(garmin, tokenstore, path, future_only=False)
         return
 
     if mode == "--plan":
-        if len(sys.argv) < 4:
+        if not positional:
             die("Missing plan directory path")
-        plan_dir = Path(sys.argv[3])
+        plan_dir = Path(positional[0])
         if not plan_dir.is_dir():
             die(f"Plan directory not found: {plan_dir}")
         yaml_files = sorted(plan_dir.glob("W[0-9]* – *.yaml"))
         if not yaml_files:
             die(f"No week YAML files found in {plan_dir}")
         today = date_cls.today().isoformat()
+        if dry_run:
+            for yf in yaml_files:
+                data = load_week_yaml(yf)
+                if data.get("dates", {}).get("end", "9999") < today:
+                    continue
+                print(f"=== {yf.name} ===", file=sys.stderr)
+                dry_run_week(yf, fmt)
+            return
         garmin = init_garmin(tokenstore)
         pushed = 0
         for yf in yaml_files:

@@ -416,6 +416,17 @@ Session type fields:
 | `intervals` | `reps`, (`distance_m` OR `effort_min`), and one of: `pace_range`, `hr_range`; `recovery_type: distance\|time`, then `recovery_m`, `recovery_min`, or `recovery_sec`; optional `warmup_min`, `cooldown_min`, `label` |
 | `race` | `distance_km`, `goal_time` |
 
+Any session type except `rest` and `race` accepts an optional `strides` block:
+
+```yaml
+strides:
+  reps: 4          # number of strides (default 4)
+  distance_m: 100  # metres per stride (default 100); typical range 80–150 m
+  pace_note: "~3:30"  # optional hint shown in the workout name — not enforced as a pace zone
+```
+
+The Garmin workout appends: a lap-button main step (runner presses lap when they reach the stride section), then a repeat group of N × [distance stride + lap-button recovery]. Recovery is open-ended — the athlete presses lap when ready for the next stride. Use `strides` whenever neuromuscular activation, pre-race priming, or stride drills are prescribed regardless of session type.
+
 `pace_range` is always `"M:SS–M:SS"` in min:sec per km. `hr_range` is `"NNN–NNN"` in bpm. Use at most one target per session — `pace_range` takes priority over `hr_range`. Never use descriptors like "HM-Pace" as the pace value — always resolve to actual min:sec. Use `label` for display only.
 
 `warmup_min` / `cooldown_min` should only be set when the warmup or cooldown has a **prescribed duration** — e.g. a structured warmup with strides, drills, or a specific pace progression, or a race-day warmup protocol. **Omit them for standard jogging warmups** (jog to the track, jog home). When omitted, the Garmin workout uses a lap-button trigger so the athlete presses lap when ready, which is the preferred default for intervals and tempo sessions.
