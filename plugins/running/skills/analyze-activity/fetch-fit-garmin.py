@@ -292,11 +292,57 @@ def emit_activity(activity: dict, garmin, fit_dir: Path) -> str | None:
     print(f">>> Saved to: {dest}", file=sys.stderr)
     print(f">>> Running fit-analyzer …", file=sys.stderr)
 
+    fit_result = subprocess.run(
+        ["fit-analyzer", "--gps-interval", "1200", dest],
+        capture_output=True, text=True, check=False,
+    )
+    fit_yaml = fit_result.stdout
+
     print(f"ACTIVITY_ID={activity_id}\tDATE={raw_date}\tTITLE={title}\tDIST_KM={distance_km}\tDUR_SEC={duration_sec}\tDEST={dest}")
     print("---FIT-ANALYZER---")
+    print(fit_yaml, end="")
     sys.stdout.flush()
-    subprocess.run(["fit-analyzer", dest], check=False)
+
+    # Extract GPS track points and start_time, then fetch weather
+    _fetch_weather(fit_yaml, dest)
+
     return raw_date
+
+
+def _fetch_weather(fit_yaml: str, dest: str) -> None:
+    """Parse gps_track from fit-analyzer YAML output and call fetch-weather.py."""
+    import re as _re
+
+    # Extract start_time
+    start_match = _re.search(r"start_time:\s*(.+)", fit_yaml)
+    if not start_match:
+        return
+    start_time = start_match.group(1).strip()
+
+    # Extract gps_track points
+    gps_section = _re.search(r"gps_track:.*?(?=\n\S|\Z)", fit_yaml, _re.DOTALL)
+    if not gps_section:
+        return
+
+    points = _re.findall(
+        r"elapsed_sec:\s*(\d+)\s+distance_km:[^\n]+\s+lat:\s*([\d.]+)\s+lon:\s*([\d.]+)",
+        gps_section.group(0),
+    )
+    if not points:
+        return
+
+    script_dir = Path(__file__).parent
+    args = ["uv", "run", "--script", str(script_dir / "fetch-weather.py"), start_time]
+    args += [f"{lat},{lon},{elapsed}" for elapsed, lat, lon in points]
+
+    result = subprocess.run(args, text=True, capture_output=True, check=False)
+    if result.returncode != 0:
+        print(f"WARN: weather fetch failed: {result.stderr.strip()}", file=sys.stderr)
+        return
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    print(result.stdout, end="")
+    sys.stdout.flush()
 
 
 def _safe(fn, *args, **kwargs):

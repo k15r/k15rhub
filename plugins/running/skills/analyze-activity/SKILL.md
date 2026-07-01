@@ -77,6 +77,8 @@ ACTIVITY_ID=<id>	DATE=<YYYY-MM-DD>	TITLE=<title>	DIST_KM=<km>	DUR_SEC=<s>	DEST=<
 
 Followed by `---FIT-ANALYZER---` and the full fit-analyzer YAML output.
 
+Optionally followed by `---WEATHER---` and a `weather:` YAML block with ambient temperature data from Open-Meteo (present when GPS track points were available in the FIT file).
+
 ---
 
 ## Step 2 — Parse fit-analyzer output and determine sport
@@ -214,6 +216,11 @@ isowoche: KW<NN>
 | Höhenmeter | +XX m / −XX m | — |
 | Kalorien | XXXX kcal | — |
 | Training Effect | X.X | — |
+| Temperatur Ø / max | XX,X / XX,X °C | — |
+| Gefühlte Temp. Ø / max | XX,X / XX,X °C | — |
+| Luftfeuchtigkeit Ø | XX % | — |
+
+> Temperatur-Zeilen nur einfügen wenn `---WEATHER---`-Block vorhanden. Werte aus `weather.avg_temp_c`, `weather.max_temp_c`, `weather.avg_apparent_temp_c`, `weather.max_apparent_temp_c`, `weather.avg_humidity_pct`.
 
 > <Erklärung von Pausen/Anomalien in den Laps, falls vorhanden.>
 
@@ -380,6 +387,11 @@ stance_time: XXX              # ms; omit if absent
 vertical_ratio: X.XX          # %; omit if absent
 kalorien: XXXX
 training_effect: X.X          # omit if absent
+temp_avg_c: XX.X              # omit if weather block absent
+temp_max_c: XX.X              # omit if weather block absent
+apparent_temp_avg_c: XX.X     # omit if weather block absent
+apparent_temp_max_c: XX.X     # omit if weather block absent
+humidity_avg_pct: XX          # omit if weather block absent
 plan: "<current_plan>"        # omit for free runs
 planwoche: "W<N>"             # omit for free runs
 plan_day: "<Mo|Di|Mi|Do|Fr|Sa|So>"  # omit for free runs
