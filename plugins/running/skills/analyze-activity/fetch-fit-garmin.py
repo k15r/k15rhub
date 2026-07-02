@@ -293,7 +293,7 @@ def emit_activity(activity: dict, garmin, fit_dir: Path) -> str | None:
     print(f">>> Running fit-analyzer …", file=sys.stderr)
 
     fit_result = subprocess.run(
-        ["fit-analyzer", "--gps-interval", "1200", dest],
+        ["fit-analyzer", "--gps-dist-interval", "50", dest],
         capture_output=True, text=True, check=False,
     )
     fit_yaml = fit_result.stdout
