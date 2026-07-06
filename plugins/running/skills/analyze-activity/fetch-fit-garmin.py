@@ -380,6 +380,7 @@ def fetch_health_summary(garmin, cdate: str, output_dir: Path) -> None:
     body_bat    = _safe(garmin.get_body_battery, cdate, cdate) or []
     rhr         = _safe(garmin.get_rhr_day, cdate) or {}
     spo2        = _safe(garmin.get_spo2_data, cdate) or {}
+    body_comp   = _safe(garmin.get_body_composition, cdate, cdate) or {}
 
     # --- Extract values (all optional — not every device supports all metrics) ---
 
@@ -420,6 +421,18 @@ def fetch_health_summary(garmin, cdate: str, output_dir: Path) -> None:
     active_min_val = active_min // 60 if active_min else None
     active_min_fmt = f"{active_min_val} min" if active_min_val else None
 
+    # Body composition (weight, body fat)
+    bc_list = body_comp.get("dateWeightList") or body_comp.get("totalAverage") or []
+    if isinstance(bc_list, dict):
+        bc_list = [bc_list]
+    weight_kg = None
+    body_fat_pct = None
+    for bc in (bc_list if isinstance(bc_list, list) else []):
+        if weight_kg is None and bc.get("weight") is not None:
+            weight_kg = round(bc["weight"] / 1000, 1)  # grams → kg
+        if body_fat_pct is None and bc.get("bodyFat") is not None:
+            body_fat_pct = round(bc["bodyFat"], 1)
+
     ym = cdate[:7]  # YYYY-MM
     entry_dir = output_dir / "Lauftagebuch" / ym
     entry_dir.mkdir(parents=True, exist_ok=True)
@@ -442,6 +455,8 @@ def fetch_health_summary(garmin, cdate: str, output_dir: Path) -> None:
         ("stress_avg", stress_avg),
         ("stress_max", stress_max),
         ("spo2_avg", spo2_avg),
+        ("gewicht_kg", weight_kg),
+        ("koerperfett_pct", body_fat_pct),
     ]:
         if val is not None:
             yaml_data[key] = val
@@ -452,7 +467,7 @@ def fetch_health_summary(garmin, cdate: str, output_dir: Path) -> None:
 
     # --- Update lauftagebuch.yaml index ---
     index_entry: dict = {"date": cdate, "source": "garmin", "file": f"{ym}/{base_name}"}
-    for key in ("hf_ruhe", "hrv_last_night", "hrv_status", "schlaf_score", "body_battery_max", "stress_avg"):
+    for key in ("hf_ruhe", "hrv_last_night", "hrv_status", "schlaf_score", "body_battery_max", "stress_avg", "gewicht_kg", "koerperfett_pct"):
         if yaml_data.get(key) is not None:
             index_entry[key] = yaml_data[key]
     _update_lauftagebuch_yaml(output_dir, "health", index_entry)
@@ -513,6 +528,22 @@ def fetch_health_summary(garmin, cdate: str, output_dir: Path) -> None:
         r = row(lbl, val, unit)
         if r:
             lines.append(r)
+
+    if weight_kg is not None or body_fat_pct is not None:
+        lines += [
+            "\n",
+            "## Körperzusammensetzung\n",
+            "\n",
+            "| | |\n",
+            "| --- | --- |\n",
+        ]
+        for lbl, val, unit in [
+            ("Gewicht",     weight_kg,     "kg"),
+            ("Körperfett",  body_fat_pct,  "%"),
+        ]:
+            r = row(lbl, val, unit)
+            if r:
+                lines.append(r)
 
     lines.append("\n")
     entry_path.write_text("".join(lines))
