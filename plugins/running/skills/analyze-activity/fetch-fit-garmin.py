@@ -437,16 +437,22 @@ def fetch_health_summary(garmin, cdate: str, output_dir: Path) -> None:
     active_min_fmt = f"{active_min_val} min" if active_min_val else None
 
     # Body composition (weight, body fat)
+    # Multiple measurements per day are possible (e.g. one with weight only, one with both).
+    # Pick the entry with the most data fields present.
     bc_list = body_comp.get("dateWeightList") or body_comp.get("totalAverage") or []
     if isinstance(bc_list, dict):
         bc_list = [bc_list]
     weight_kg = None
     body_fat_pct = None
-    for bc in (bc_list if isinstance(bc_list, list) else []):
-        if weight_kg is None and bc.get("weight") is not None:
-            weight_kg = round(bc["weight"] / 1000, 1)  # grams → kg
-        if body_fat_pct is None and bc.get("bodyFat") is not None:
-            body_fat_pct = round(bc["bodyFat"], 1)
+    if isinstance(bc_list, list) and bc_list:
+        best = max(
+            bc_list,
+            key=lambda bc: (bc.get("weight") is not None) + (bc.get("bodyFat") is not None),
+        )
+        if best.get("weight") is not None:
+            weight_kg = round(best["weight"] / 1000, 1)  # grams → kg
+        if best.get("bodyFat") is not None:
+            body_fat_pct = round(best["bodyFat"], 1)
 
     ym = cdate[:7]  # YYYY-MM
     entry_dir = output_dir / "Gesundheitstagebuch" / ym
