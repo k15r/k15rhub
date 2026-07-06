@@ -395,7 +395,7 @@ def fetch_health_summary(garmin, cdate: str, output_dir: Path) -> None:
     body_bat    = _safe(garmin.get_body_battery, cdate, cdate) or []
     rhr         = _safe(garmin.get_rhr_day, cdate) or {}
     spo2        = _safe(garmin.get_spo2_data, cdate) or {}
-    body_comp   = _safe(garmin.get_body_composition, cdate, cdate) or {}
+    weigh_ins   = _safe(garmin.get_weigh_ins, cdate, cdate) or {}
 
     # --- Extract values (all optional — not every device supports all metrics) ---
 
@@ -437,18 +437,23 @@ def fetch_health_summary(garmin, cdate: str, output_dir: Path) -> None:
     active_min_fmt = f"{active_min_val} min" if active_min_val else None
 
     # Body composition (weight, body fat)
-    # Multiple measurements per day are possible (e.g. one with weight only, one with both).
-    # Pick the entry with the most data fields present.
-    bc_list = body_comp.get("dateWeightList") or body_comp.get("totalAverage") or []
-    if isinstance(bc_list, dict):
-        bc_list = [bc_list]
+    # get_weigh_ins returns all measurements per day in allWeightMetrics.
+    # Prefer INDEX_SCALE entries (from Garmin scale, includes body fat) over MFP.
+    # Among same source type, pick the entry with the most non-null fields.
+    all_metrics = []
+    for summary in (weigh_ins.get("dailyWeightSummaries") or []):
+        all_metrics.extend(summary.get("allWeightMetrics") or [])
+
+    def _score(bc: dict) -> tuple:
+        source_rank = 1 if bc.get("sourceType") == "INDEX_SCALE" else 0
+        field_count = sum(1 for k in ("weight", "bodyFat", "bmi") if bc.get(k) is not None)
+        earliest = -(bc.get("timestampGMT") or 0)  # negate: lower timestamp wins
+        return (source_rank, field_count, earliest)
+
     weight_kg = None
     body_fat_pct = None
-    if isinstance(bc_list, list) and bc_list:
-        best = max(
-            bc_list,
-            key=lambda bc: (bc.get("weight") is not None) + (bc.get("bodyFat") is not None),
-        )
+    if all_metrics:
+        best = max(all_metrics, key=_score)
         if best.get("weight") is not None:
             weight_kg = round(best["weight"] / 1000, 1)  # grams → kg
         if best.get("bodyFat") is not None:
