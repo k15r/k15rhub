@@ -23,7 +23,7 @@ and structures everything before invoking the agent.
 - **ACTION** — one of: `new`, `update`, `status`, `adapt-week`, empty/blank (treat as `status`), or a free-text coaching question
 - **CONFIG** — full contents of `~/.marathon-coach/config.yaml`, optionally followed by `race_type_override: <type>`
 - **ACTIVITY_HISTORY** — YAML list of the 14 most recent activity entries from `lauftagebuch.yaml` (newest first); fields: `date`, `type`, `sport`, `distance_km`, `pace`, `hf_avg`, `training_effect`, `soll_pace`, `reflexion_aufgefallen`, etc.
-- **HEALTH_HISTORY** — YAML list of the 14 most recent daily health summaries from `lauftagebuch.yaml` (newest first); fields: `date`, `hf_ruhe`, `hrv_last_night`, `hrv_status`, `schlaf_score`, `body_battery_max`, `stress_avg`
+- **HEALTH_HISTORY** — YAML list of the 14 most recent daily health summaries from `gesundheitstagebuch.yaml` (newest first); fields: `date`, `hf_ruhe`, `hrv_last_night`, `hrv_status`, `schlaf_score`, `body_battery_max`, `stress_avg`, `gewicht_kg`, `koerperfett_pct`
 - **TODAY** — today's date as `YYYY-MM-DD`
 
 For `new` / `update` / `status`:

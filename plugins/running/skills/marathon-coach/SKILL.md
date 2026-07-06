@@ -106,7 +106,9 @@ Read `$CONFIG` and parse `output_dir` and `current_plan`.
 
 Check whether `<output_dir>/Lauftagebuch/lauftagebuch.yaml` exists (written by the `analyze-activity` skill).
 
-If it exists: read the last 14 entries from both the `entries` and `health` lists. This is the structured source of truth.
+If it exists: read the last 14 entries from the `entries` list. This is the structured source of truth for activities.
+
+Also check whether `<output_dir>/Gesundheitstagebuch/gesundheitstagebuch.yaml` exists. If it exists: read the last 14 entries from the `entries` list.
 
 ### 2b — Fallback
 
@@ -160,7 +162,7 @@ Invoke the `marathon-coach` agent with the following prompt, substituting all co
 >
 > **HEALTH_HISTORY** (last 14 days, newest first)**:**
 > ```yaml
-> <health list from lauftagebuch.yaml, last 14 items, or "none">
+> <entries list from gesundheitstagebuch.yaml, last 14 items, or "none">
 > ```
 >
 > **PLAN_CONTEXT** (`<found | none>`)**:**

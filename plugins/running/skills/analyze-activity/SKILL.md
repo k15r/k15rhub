@@ -431,7 +431,7 @@ The index table header should be:
 
 ### YAML index
 
-Also update `<output_dir>/Lauftagebuch/lauftagebuch.yaml`. If it does not exist, create it with empty `entries: []` and `health: []` lists. Prepend a compact entry to the `entries` list (newest first):
+Also update `<output_dir>/Lauftagebuch/lauftagebuch.yaml`. If it does not exist, create it with an empty `entries: []` list. Prepend a compact entry to the `entries` list (newest first):
 
 ```yaml
 entries:
@@ -449,8 +449,9 @@ entries:
     soll_pace: "M:SS–M:SS"    # omit for free runs
     reflexion_aufgefallen: "<text or empty string>"
     file: "YYYY-MM/YYYY-MM-DD <Type>"  # path relative to Lauftagebuch/, without extension
-health: []  # unchanged
 ```
+
+Health data is written separately to `<output_dir>/Gesundheitstagebuch/gesundheitstagebuch.yaml` by `fetch-fit-garmin.py` — do not add a `health` list to `lauftagebuch.yaml`.
 
 To compute `hr_drift`: split the valid laps into two halves, take the average `hf_avg` of each half, subtract first from second. Omit if fewer than 4 laps or lap HR data is absent.
 
@@ -494,7 +495,7 @@ Locate the current and next week YAML files:
 3. Identify the **next week YAML**: the immediately following one, if it exists.
 4. Identify the **2 prior week YAMLs** for load trajectory.
 5. Also locate the sibling `.md` files for the current and next week (same base name) — these are passed read-only so the agent can faithfully reproduce unchanged rows.
-6. Read the last 14 entries from `<output_dir>/Lauftagebuch/lauftagebuch.yaml` (both `entries` and `health` lists).
+6. Read the last 14 entries from `<output_dir>/Lauftagebuch/lauftagebuch.yaml` (`entries` list) and the last 14 entries from `<output_dir>/Gesundheitstagebuch/gesundheitstagebuch.yaml` (`entries` list).
 
 Invoke the `marathon-coach` agent with:
 
@@ -529,7 +530,7 @@ Invoke the `marathon-coach` agent with:
 >
 > **HEALTH_HISTORY** (last 14 days, newest first)**:**
 > ```yaml
-> <health list from lauftagebuch.yaml, last 14>
+> <entries list from gesundheitstagebuch.yaml, last 14>
 > ```
 >
 > **CURRENT_WEEK_FILE** (read-only — for faithful markdown reproduction only)**:**

@@ -25,7 +25,7 @@ Health summary mode:
     fetch-fit-garmin.py <user> --health [YYYY-MM-DD]
 
     Fetches daily health summary (RHR, HRV, sleep, body battery, stress, steps, SpO2)
-    for the given date (default: yesterday). Writes a markdown entry to the Lauftagebuch.
+    for the given date (default: yesterday). Writes a markdown entry to the Gesundheitstagebuch.
 
 Single-activity output (stdout):
     ACTIVITY_ID=<id>\tDATE=<YYYY-MM-DD>\tTITLE=<title>\tDIST_KM=<km>\tDUR_SEC=<s>\tDEST=<path>
@@ -153,12 +153,12 @@ def health_dates_to_fetch(tokenstore: str, output_dir: Path) -> list[str]:
         ]
 
     # Always re-fetch today if a health entry already exists (data may be partial)
-    index_path = output_dir / "Lauftagebuch" / "lauftagebuch.yaml"
+    index_path = output_dir / "Gesundheitstagebuch" / "gesundheitstagebuch.yaml"
     if index_path.exists():
         import yaml as _yaml
         with open(index_path) as f:
             idx = _yaml.safe_load(f) or {}
-        existing_health_dates = {e.get("date") for e in idx.get("health", [])}
+        existing_health_dates = {e.get("date") for e in idx.get("entries", [])}
         if today in existing_health_dates:
             dates.append(today)
 
@@ -354,7 +354,7 @@ def _safe(fn, *args, **kwargs):
 
 
 def _update_lauftagebuch_yaml(output_dir: Path, section: str, entry: dict) -> None:
-    """Prepend an entry to the entries or health list in lauftagebuch.yaml."""
+    """Prepend an entry to the entries list in lauftagebuch.yaml."""
     import yaml as _yaml
     index_path = output_dir / "Lauftagebuch" / "lauftagebuch.yaml"
     if index_path.exists():
@@ -363,8 +363,23 @@ def _update_lauftagebuch_yaml(output_dir: Path, section: str, entry: dict) -> No
     else:
         data = {}
     data.setdefault("entries", [])
-    data.setdefault("health", [])
     data[section].insert(0, entry)
+    with open(index_path, "w") as f:
+        _yaml.dump(data, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
+
+
+def _update_gesundheitstagebuch_yaml(output_dir: Path, entry: dict) -> None:
+    """Prepend an entry to the entries list in gesundheitstagebuch.yaml."""
+    import yaml as _yaml
+    index_path = output_dir / "Gesundheitstagebuch" / "gesundheitstagebuch.yaml"
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    if index_path.exists():
+        with open(index_path) as f:
+            data = _yaml.safe_load(f) or {}
+    else:
+        data = {}
+    data.setdefault("entries", [])
+    data["entries"].insert(0, entry)
     with open(index_path, "w") as f:
         _yaml.dump(data, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
 
@@ -434,7 +449,7 @@ def fetch_health_summary(garmin, cdate: str, output_dir: Path) -> None:
             body_fat_pct = round(bc["bodyFat"], 1)
 
     ym = cdate[:7]  # YYYY-MM
-    entry_dir = output_dir / "Lauftagebuch" / ym
+    entry_dir = output_dir / "Gesundheitstagebuch" / ym
     entry_dir.mkdir(parents=True, exist_ok=True)
     base_name = f"{cdate} Gesundheit"
 
@@ -465,12 +480,12 @@ def fetch_health_summary(garmin, cdate: str, output_dir: Path) -> None:
     with open(yaml_path, "w") as f:
         _yaml.dump(yaml_data, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
 
-    # --- Update lauftagebuch.yaml index ---
+    # --- Update gesundheitstagebuch.yaml index ---
     index_entry: dict = {"date": cdate, "source": "garmin", "file": f"{ym}/{base_name}"}
     for key in ("hf_ruhe", "hrv_last_night", "hrv_status", "schlaf_score", "body_battery_max", "stress_avg", "gewicht_kg", "koerperfett_pct"):
         if yaml_data.get(key) is not None:
             index_entry[key] = yaml_data[key]
-    _update_lauftagebuch_yaml(output_dir, "health", index_entry)
+    _update_gesundheitstagebuch_yaml(output_dir, index_entry)
 
     # --- Write markdown ---
     entry_path = entry_dir / f"{base_name}.md"
