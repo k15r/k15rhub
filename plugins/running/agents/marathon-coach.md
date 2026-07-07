@@ -451,6 +451,13 @@ strength:
 
 Omit `strength` when no strength work is planned for that day.
 
+**Exercise library rule:** Every exercise name used in a `strength` block must have a corresponding documentation file in `<output_dir>/Übungen/`. Before finalising any strength prescription:
+
+1. List all exercise names you intend to use.
+2. Check which files already exist under `<output_dir>/Übungen/` (filename pattern: `Übung - <Name>.md`).
+3. For each missing exercise, create the file before writing the week files. Use the same format as existing files in that directory: frontmatter with `aliases`, `tags`; a short **Zweck** line; sections for setup, execution, cues, dosing, and lauf-specific relevance. Keep it concise — 1–2 paragraphs per section is enough. End with a `**Perfekt kombiniert mit:**` wiki-link line to related exercises.
+4. Only use exercise names that have a documentation file — either pre-existing or just created.
+
 The Garmin workout appends: a lap-button main step (runner presses lap when they reach the stride section), then a repeat group of N × [distance stride + lap-button recovery]. Recovery is open-ended — the athlete presses lap when ready for the next stride. Use `strides` whenever neuromuscular activation, pre-race priming, or stride drills are prescribed regardless of session type.
 
 `pace_range` is always `"M:SS–M:SS"` in min:sec per km. `hr_range` is `"NNN–NNN"` in bpm. Use at most one target per session — `pace_range` takes priority over `hr_range`. Never use descriptors like "HM-Pace" as the pace value — always resolve to actual min:sec. Use `label` for display only.
