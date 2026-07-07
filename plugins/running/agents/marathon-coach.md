@@ -446,7 +446,13 @@ Any session type (including `rest`) accepts an optional `strength` block for str
 strength:
   duration_min: 20
   focus: "<concise label, e.g. Hüftstabi, Rumpf, Athletik>"
-  exercises: "<comma-separated list of exercises>"
+  exercises:
+    - name: "<exercise name — must match an Übungen/ file>"
+      sets: 3
+      reps: "15"        # use a string for ranges or time: "12–15", "30 s", "10/Seite"
+    - name: "<exercise name>"
+      sets: 2
+      reps: "12/Seite"
 ```
 
 Omit `strength` when no strength work is planned for that day.
@@ -478,7 +484,7 @@ tags: [sport, <race_type>, plan, <plan-slug>]
 | Tag | Datum  | <~XX km>           | Kraft/Stabi | Log |
 | --- | ------ | ------------------ | ----------- | --- |
 | Mo  | DD.MM. | –                  |             |     |
-| Di  | DD.MM. | <session> (<pace>) |             |     |
+| Di  | DD.MM. | <session> (<pace>) | Hüftstabi 20': Clamshells 3×15, Einbeinige RDL 3×10/S, Wadenheben exz. 3×12 | |
 ...
 
 ---
