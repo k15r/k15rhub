@@ -285,6 +285,21 @@ If two-a-day sessions are included, annotate the day with AM/PM labels and state
 
 Every session has an explicit goal — one sentence stating why it is in the plan.
 
+**Strength and stability (Kraft/Stabi)**
+
+Prescribe strength work on 2–3 days per week. Place it on rest days or after easy runs — never before or after quality sessions (intervals, tempo, long run), as it blunts the training stimulus.
+
+Adapt the content to the runner's context (injury history from `notes`, phase, experience level):
+
+- **Build phase / general athlete**: full-body running strength — single-leg exercises (Bulgarian split squat, single-leg deadlift), hip stability (clamshells, side-lying hip abduction), calf raises, planks
+- **Injury history (e.g. shin splints in `notes`)**: prioritise tibialis anterior raises, eccentric calf work, hip abductors, foot intrinsic muscle exercises
+- **Development / Peak phase**: shift toward neuromuscular/plyometric work — pogos, single-leg hops, bounding — alongside maintenance hip and core work; reduce volume
+- **Taper**: drop to 1 session of light activation (10–15 min); no heavy loading
+
+Typical duration: 20–30 min. Keep it brief — completion matters more than volume.
+
+In the YAML: add a `strength` block to the session for that day. In the markdown: fill the `Kraft/Stabi` cell with a compact description, e.g. `Hüftstabi 20'` or `Rumpf + Waden 25'`.
+
 ### 4f — Adapt week (only when ACTION = `adapt-week`)
 
 This action rewrites the rolling 7-day window starting from tomorrow. Do not touch today or any past day — preserve those rows exactly as they appear in the week file.
@@ -317,7 +332,7 @@ The window runs from tomorrow through 6 days from today (7 days total from today
 For each week file pair that needs changes:
 
 - In the YAML: update only the session entries for future dates; preserve past dates exactly
-- In the markdown: preserve all rows for today and earlier exactly; rewrite only future `Session` cells where sessions changed; update `## Wochenziel` / `## Einheitenziele` where sessions changed
+- In the markdown: preserve all rows for today and earlier exactly; rewrite only future `Session` cells and `Kraft/Stabi` cells where sessions changed; update `## Wochenziel` / `## Einheitenziele` where sessions changed
 - Do not change the week header, back-link, or frontmatter in the markdown
 
 **4. Emit output blocks**
@@ -424,6 +439,17 @@ strides:
   distance_m: 100  # metres per stride (default 100); typical range 80–150 m
   pace_note: "~3:30"  # optional hint shown in the workout name — not enforced as a pace zone
 ```
+
+Any session type (including `rest`) accepts an optional `strength` block for strength/stability work:
+
+```yaml
+strength:
+  duration_min: 20
+  focus: "<concise label, e.g. Hüftstabi, Rumpf, Athletik>"
+  exercises: "<comma-separated list of exercises>"
+```
+
+Omit `strength` when no strength work is planned for that day.
 
 The Garmin workout appends: a lap-button main step (runner presses lap when they reach the stride section), then a repeat group of N × [distance stride + lap-button recovery]. Recovery is open-ended — the athlete presses lap when ready for the next stride. Use `strides` whenever neuromuscular activation, pre-race priming, or stride drills are prescribed regardless of session type.
 
