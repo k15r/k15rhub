@@ -78,7 +78,7 @@ uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --
 uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --week <week-yaml-path>
 ```
 
-The `--week` command only uploads sessions whose date is today or later — past sessions in the file are skipped automatically.
+The `--week` command only uploads sessions whose date is strictly after today — today and past sessions are skipped automatically.
 
 **For the full plan:**
 

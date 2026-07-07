@@ -581,7 +581,7 @@ uv run --script <skill-dir>/push-workouts-garmin.py $USER --delete-date <YYYY-MM
 uv run --script <skill-dir>/push-workouts-garmin.py $USER --week <week-yaml-path>
 ```
 
-The `--week` flag only uploads sessions with dates today or later, so past sessions are skipped automatically.
+The `--week` flag only uploads sessions with dates strictly after today, so today and past sessions are skipped automatically.
 
 Pass the `.yaml` path (not `.md`) to `--week` — both files are rewritten by the agent, and the script reads the YAML.
 

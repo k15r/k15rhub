@@ -790,7 +790,7 @@ def main() -> None:
             dry_run_week(path, fmt)
             return
         garmin = init_garmin(tokenstore)
-        process_week(garmin, tokenstore, path, future_only=False)
+        process_week(garmin, tokenstore, path, future_only=True)
         return
 
     if mode == "--plan":
