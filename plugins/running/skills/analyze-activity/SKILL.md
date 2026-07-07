@@ -563,13 +563,25 @@ For each block:
 
 Then parse `CHANGED_DATES: <comma-separated dates or "none">` from the agent response.
 
-If `garmin_email` is set in `$CONFIG` and `CHANGED_DATES` is not "none", delete and re-upload Garmin workouts for each changed date that is **strictly after today and within the next 7 days** (same horizon as `--week`). Dates beyond 7 days are skipped — they will be picked up by the next `/sync-garmin` run:
+If `garmin_email` is set in `$CONFIG`, always sync the next 7 days to Garmin — regardless of whether the plan was adapted. This ensures upcoming workouts are always present on the watch.
+
+For each week YAML to sync (current week, and next week if it has sessions within the next 7 days):
+
+1. Read the week YAML and identify all non-rest session dates strictly after today and within the next 7 days.
+2. Delete any previously scheduled workout for each such date:
 
 ```bash
-# For each changed date that is > today AND ≤ today + 7 days:
+# For each such date:
 uv run --script <skill-dir>/push-workouts-garmin.py $USER --delete-date <YYYY-MM-DD>
-uv run --script <skill-dir>/push-workouts-garmin.py $USER --week <rewritten-week-yaml-path>
 ```
+
+3. Upload the week:
+
+```bash
+uv run --script <skill-dir>/push-workouts-garmin.py $USER --week <week-yaml-path>
+```
+
+The `--week` flag only uploads sessions with dates today or later, so past sessions are skipped automatically.
 
 Pass the `.yaml` path (not `.md`) to `--week` — both files are rewritten by the agent, and the script reads the YAML.
 

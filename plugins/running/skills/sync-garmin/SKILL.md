@@ -22,8 +22,8 @@ uploaded workouts for the same dates before uploading the new versions.
 **User arguments:** `$ARGUMENTS`
 
 - `user=<name>` *(optional)* — which user's config to use
-- `week` *(optional)* — sync only the current week; optionally followed by a path to a specific week YAML
-- `plan` *(optional)* — sync all future weeks in the active plan (default when no scope given)
+- `week` *(optional)* — sync only the next 7 days (default when no scope given); optionally followed by a path to a specific week YAML
+- `plan` *(optional)* — sync all future weeks in the active plan
 - Path argument *(optional)* — explicit path to a week YAML or plan directory
 
 ---
@@ -48,9 +48,9 @@ If `garmin_email` is not set, inform the user and stop:
 Determine scope from remaining arguments:
 
 - `week <path>` → sync that specific week YAML
-- `week` (no path) → find the current week YAML (whose `dates.start`–`dates.end` contains today). If today falls outside all week ranges (before plan start or after plan end), inform the user and stop.
+- `week` (no path) or no argument → sync the next 7 days: find the current week YAML (whose `dates.start`–`dates.end` contains today); if today's date is within the last 2 days of that week, also include the next week YAML so the full 7-day window is covered. If today falls outside all week ranges, inform the user and stop.
 - `plan <path>` → sync all future weeks in that plan directory
-- `plan` or no argument → derive plan directory from `current_plan` and `race_type`:
+- `plan` → derive plan directory from `current_plan` and `race_type`:
   `<output_dir>/<Race-Type-Folder>/<current_plan>/`
 
 If `current_plan` is empty and no path was provided, inform the user and stop.
@@ -61,7 +61,9 @@ If `current_plan` is empty and no path was provided, inform the user and stop.
 
 The `push-workouts-garmin.py` script lives alongside `analyze-activity` in the plugin.
 
-**For a single week:**
+**For a single week (or the default 7-day scope, which may cover two week YAMLs):**
+
+For each week YAML in scope:
 
 1. Read the week YAML to identify all non-rest session dates that are strictly after today **and within the next 7 days** (the same horizon enforced by `--week`).
 2. For each such date, delete any previously scheduled workout:
