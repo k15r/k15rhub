@@ -226,10 +226,7 @@ isowoche: KW<NN>
 
 ## Höhenprofil
 
-```text
-<sparkline>
-XXXm                                                                                        XXXm
-```
+<SVG_ELEVATION_PROFILE>
 
 - Km 0–X: <Beschreibung>
 
@@ -360,6 +357,17 @@ isowoche: KW<NN>
 - Omit `> Erklärung...` blockquote if no anomalies exist
 - German locale: comma as decimal separator (5,27 not 5.27)
 - Cadence ×2 for running
+
+### SVG elevation profile
+
+When `height_profile.svg_path` is present in the fit-analyzer output, read the SVG file from that path and embed it verbatim in place of `<SVG_ELEVATION_PROFILE>`. The SVG is a self-contained `<svg>…</svg>` block — paste it directly into the markdown, surrounded by blank lines. Do not wrap it in a code fence.
+
+If `svg_path` is absent or the file cannot be read, fall back to the sparkline:
+
+```text
+<sparkline>
+XXXm                                                                                        XXXm
+```
 
 ### Activity YAML (sibling file)
 
