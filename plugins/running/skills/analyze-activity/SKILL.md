@@ -111,9 +111,9 @@ From `session` record:
 - `avg_vertical_oscillation` → mm
 - `avg_stance_time` → ms
 - `avg_vertical_ratio` → %
-- `total_ascent`, `total_descent` → m
+- `total_ascent`, `total_descent` → m (from `metadata`; use `height_profile.total_ascent_m` / `height_profile.total_descent_m` when present — these are derived from the same spline as the SVG and are always consistent with the visual profile)
 - `height_profile.sparkline` → ASCII bar chart
-- `height_profile.min_elevation`, `height_profile.max_elevation` → m
+- `height_profile.min_altitude_m`, `height_profile.max_altitude_m` → m
 
 From `lap` records (running and cycling):
 
