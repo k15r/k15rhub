@@ -360,7 +360,12 @@ isowoche: KW<NN>
 
 ### SVG elevation profile
 
-When `height_profile.svg_path` is present in the fit-analyzer output, read the SVG file from that path and embed it verbatim in place of `<SVG_ELEVATION_PROFILE>`. The SVG is a self-contained `<svg>…</svg>` block — paste it directly into the markdown, surrounded by blank lines. Do not wrap it in a code fence.
+When `height_profile.svg_path` is present in the fit-analyzer output:
+
+1. Copy the SVG file to the same directory as the `.md` entry, using the same base name: `<output_dir>/Lauftagebuch/YYYY-MM/<filename>.svg`.
+2. In place of `<SVG_ELEVATION_PROFILE>`, insert a standard markdown image link using the copied filename (relative, no path prefix): `![](<filename>.svg)`
+
+**Never inline SVG code into the markdown.** The file must be referenced as a link only.
 
 If `svg_path` is absent or the file cannot be read, fall back to the sparkline:
 

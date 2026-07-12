@@ -427,7 +427,7 @@ Session type fields:
 | `rest` | — |
 | `easy` | `subtype: jogging\|dauerlauf`, `duration_min`, and one of: `pace_range`, `hr_range`, or neither |
 | `tempo` | `distance_km` OR `effort_min` (one required), and one of: `pace_range`, `hr_range`; optional `warmup_min`, `cooldown_min` |
-| `long_run` | `distance_km` OR `duration_min` (one required), and one of: `pace_range`, `hr_range`; if structured: add `with_efforts: true`, `easy_pace`, `effort_pace`, `effort_reps`, `effort_km`, `recovery_km` (structured requires `distance_km`) |
+| `long_run` | `distance_km` OR `duration_min` (one required; both may be set for display — `distance_km` takes priority for Garmin upload), and one of: `pace_range`, `hr_range`; if structured: add `with_efforts: true`, `easy_pace`, `effort_pace`, `effort_reps`, `effort_km`, `recovery_km` (structured requires `distance_km`) |
 | `intervals` | `reps`, (`distance_m` OR `effort_min`), and one of: `pace_range`, `hr_range`; `recovery_type: distance\|time`, then `recovery_m`, `recovery_min`, or `recovery_sec`; optional `warmup_min`, `cooldown_min`, `label` |
 | `race` | `distance_km`, `goal_time` |
 
@@ -469,6 +469,8 @@ The Garmin workout appends: a lap-button main step (runner presses lap when they
 `pace_range` is always `"M:SS–M:SS"` in min:sec per km. `hr_range` is `"NNN–NNN"` in bpm. Use at most one target per session — `pace_range` takes priority over `hr_range`. Never use descriptors like "HM-Pace" as the pace value — always resolve to actual min:sec. Use `label` for display only.
 
 `warmup_min` / `cooldown_min` should only be set when the warmup or cooldown has a **prescribed duration** — e.g. a structured warmup with strides, drills, or a specific pace progression, or a race-day warmup protocol. **Omit them for standard jogging warmups** (jog to the track, jog home). When omitted, the Garmin workout uses a lap-button trigger so the athlete presses lap when ready, which is the preferred default for intervals and tempo sessions.
+
+**Markdown cell format for `long_run`:** When both `distance_km` and `duration_min` are set, lead with distance in the table cell — e.g. `Langer DL 18 km (~90 min, 5:30–5:45)`. Distance is what Garmin enforces; duration is shown as an estimate in parentheses. Never lead with duration when distance is set, as that implies duration is the end condition.
 
 **`W<N> – DD.MM–DD.MM.md`** — human-readable, derived from the YAML. Use the language from config (`de` or `en`) for all headings and labels. German template:
 
