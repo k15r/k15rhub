@@ -438,40 +438,34 @@ def append_strides(steps: list, strides: dict, base_order: int, estimated_secs: 
 # Session → Garmin workout (from YAML session dict)
 # ---------------------------------------------------------------------------
 
-# Garmin exercise category / name mappings for common running-strength exercises.
-# Key = lowercase exercise name from YAML; value = (category_str, exercise_str).
-# Both must be valid FIT SDK keys — see garmin_exercises.json for the full catalogue.
-# Exercises NOT in this map are skipped with a warning — Garmin rejects unknown values.
+# Legacy name→Garmin mapping kept for backward compatibility with existing YAMLs
+# that don't yet have garmin_category/garmin_exercise fields.
+# New YAMLs should set those fields directly (see marathon-coach schema).
 _EXERCISE_MAP: dict[str, tuple[str, str]] = {
-    # Hips / glutes
     "clamshells":                     ("BANDED_EXERCISES", "CLAM_SHELLS"),
     "seitliches beinheben":           ("HIP_STABILITY", "SIDE_LYING_LEG_RAISE"),
     "hüftabduktion":                  ("HIP_STABILITY", "STANDING_HIP_ABDUCTION"),
     "hüftkreisen":                    ("HIP_STABILITY", "HIP_CIRCLES"),
     "monster walks":                  ("HIP_STABILITY", "LATERAL_WALKS_WITH_BAND_AT_ANKLES"),
-    # Legs / squat
     "bulgarian split squat":          ("SQUAT", "PISTOL_SQUAT"),
     "einbeinige kniebeuge":           ("SQUAT", "PISTOL_SQUAT"),
     "kniebeuge":                      ("SQUAT", "BACK_SQUATS"),
-    # Deadlift / hinge
     "einbeiniges kreuzheben":         ("DEADLIFT", "SINGLE_LEG_BARBELL_DEADLIFT"),
     "einbeinige rdl":                 ("DEADLIFT", "SINGLE_LEG_BARBELL_DEADLIFT"),
     "einbeiniges rdl":                ("DEADLIFT", "SINGLE_LEG_BARBELL_DEADLIFT"),
     "rdl":                            ("DEADLIFT", "ROMANIAN_DEADLIFT"),
     "kreuzheben":                     ("DEADLIFT", "BARBELL_DEADLIFT"),
-    # Calves / shin
     "wadenheben":                     ("CALF_RAISE", "STANDING_CALF_RAISE"),
     "wadenheben exzentrisch":         ("CALF_RAISE", "SINGLE_LEG_STANDING_CALF_RAISE"),
     "wadenheben exz.":                ("CALF_RAISE", "SINGLE_LEG_STANDING_CALF_RAISE"),
     "einbeiniges wadenheben":         ("CALF_RAISE", "SINGLE_LEG_STANDING_CALF_RAISE"),
     "tibialis anterior heben":        ("WARM_UP", "WALKOUT"),
     "tibialis heben":                 ("WARM_UP", "WALKOUT"),
-    # Core / plank
     "plank":                          ("PLANK", "PLANK"),
-    "seitstütz":                     ("PLANK", "SIDE_PLANK"),
-    "seitstütz links":               ("PLANK", "SIDE_PLANK"),
-    "seitstütz rechts":              ("PLANK", "SIDE_PLANK"),
-    "side plank":                    ("PLANK", "SIDE_PLANK"),
+    "seitstütz":                      ("PLANK", "SIDE_PLANK"),
+    "seitstütz links":                ("PLANK", "SIDE_PLANK"),
+    "seitstütz rechts":               ("PLANK", "SIDE_PLANK"),
+    "side plank":                     ("PLANK", "SIDE_PLANK"),
     "dead bug":                       ("HIP_STABILITY", "DEAD_BUG"),
     "deadbugs":                       ("HIP_STABILITY", "DEAD_BUG"),
     "hollow holds":                   ("HYPEREXTENSION", "HOLLOW_HOLD_AND_ROLL"),
@@ -479,30 +473,22 @@ _EXERCISE_MAP: dict[str, tuple[str, str]] = {
     "bird dog":                       ("HIP_STABILITY", "QUADRUPED"),
     "bird-dogs":                      ("HIP_STABILITY", "QUADRUPED"),
     "bird-dog":                       ("HIP_STABILITY", "QUADRUPED"),
-    # Hip raise / glute bridge
-    "brücke":                        ("HIP_RAISE", "HIP_RAISE"),
-    "einbeinige brücke":             ("HIP_RAISE", "SINGLE_LEG_HIP_RAISE"),
-    # Crunch / sit-up
+    "brücke":                         ("HIP_RAISE", "HIP_RAISE"),
+    "einbeinige brücke":              ("HIP_RAISE", "SINGLE_LEG_HIP_RAISE"),
     "crunch":                         ("CRUNCH", "CRUNCH"),
-    # Lunge
     "ausfallschritt":                 ("LUNGE", "LUNGE"),
     "curtsy lunge":                   ("LUNGE", "CURTSY_LUNGE"),
-    # Upper body
-    "liegestütz":                    ("PUSH_UP", "PUSH_UP"),
+    "liegestütz":                     ("PUSH_UP", "PUSH_UP"),
     "row":                            ("ROW", "BENT_OVER_ROW_WITH_BARBELL"),
-    # Jumps / plyometrics
     "pogos":                          ("PLYO", "BOX_JUMP"),
-    "einbeinige hüpfer":             ("PLYO", "BOX_JUMP"),
-    "sprünge":                       ("PLYO", "BOX_JUMP"),
-    # Ankle / mobility
-    "sprunggelenk-cars":              ("WARM_UP", "WALKING_HIGH_KNEES"),
-    "sprunggelenk cars":              ("WARM_UP", "WALKING_HIGH_KNEES"),
-    # Walking drills
+    "einbeinige hüpfer":              ("PLYO", "BOX_JUMP"),
+    "sprünge":                        ("PLYO", "BOX_JUMP"),
+    "sprunggelenk-cars":              ("WARM_UP", "ANKLE_CIRCLES"),
+    "sprunggelenk cars":              ("WARM_UP", "ANKLE_CIRCLES"),
     "fersengehen":                    ("RUN", "WALK"),
-    "gehen auf fußkanten":           ("RUN", "WALK"),
+    "gehen auf fußkanten":            ("RUN", "WALK"),
 }
 
-# Validate map against catalogue at module load (warns on bad entries, doesn't crash)
 if _CATALOGUE:
     for _german, (_cat, _ex) in _EXERCISE_MAP.items():
         if _cat not in _CATALOGUE:
@@ -513,11 +499,6 @@ if _CATALOGUE:
 _WEIGHT_UNIT = {"unitId": 8, "unitKey": "kilogram", "factor": 1000.0}
 _STROKE_TYPE = {"strokeTypeId": 0, "strokeTypeKey": None, "displayOrder": 0}
 _EQUIP_TYPE  = {"equipmentTypeId": 0, "equipmentTypeKey": None, "displayOrder": 0}
-
-
-def _exercise_ids(name: str) -> tuple[str, str] | None:
-    """Return (category, exerciseName) strings, or None if unmapped."""
-    return _EXERCISE_MAP.get(name.lower().strip())
 
 
 def _strength_rest_step(order: int, child_step_id: int) -> dict:
@@ -543,20 +524,49 @@ def _strength_rest_step(order: int, child_step_id: int) -> dict:
     }
 
 
-def exercise_step(order: int, name: str, sets: int, reps: str,
-                  child_step_id: int = 1, notes: str = "") -> dict | None:
-    """Build a single strength interval step. Returns None if exercise is unmapped."""
-    mapping = _exercise_ids(name)
-    if mapping is None:
-        print(f"  WARN: unmapped exercise {name!r} — skipped", file=sys.stderr)
-        return None
-    category, exercise_name = mapping
-    reps_str = str(reps).strip()
+def exercise_step(order: int, ex: dict, child_step_id: int = 1) -> dict | None:
+    """Build a single strength interval step from an exercise dict.
+
+    New YAMLs supply garmin_category + garmin_exercise directly.
+    Legacy YAMLs supply only name — looked up via _EXERCISE_MAP (deprecated).
+    Returns None if the exercise cannot be resolved.
+    """
+    name = ex.get("name", "")
+    sets = int(ex.get("sets", 3))
+    reps = str(ex.get("reps", "10"))
+    notes = str(ex.get("notes", ""))
+
+    # Prefer explicit Garmin fields
+    category = ex.get("garmin_category", "").upper().strip()
+    exercise_name = ex.get("garmin_exercise", "").upper().strip()
+
+    if not category or not exercise_name:
+        # Legacy fallback: look up by name
+        mapping = _EXERCISE_MAP.get(name.lower().strip())
+        if mapping is None:
+            print(f"  WARN: unmapped exercise {name!r} — skipped (add garmin_category/garmin_exercise to YAML)",
+                  file=sys.stderr)
+            return None
+        category, exercise_name = mapping
+        print(f"  DEPRECATION: {name!r} resolved via legacy map — add garmin_category/garmin_exercise to YAML",
+              file=sys.stderr)
+
+    # Validate against catalogue
+    if _CATALOGUE:
+        if category not in _CATALOGUE:
+            print(f"  WARN: unknown garmin_category {category!r} for {name!r} — skipped", file=sys.stderr)
+            return None
+        if exercise_name not in _CATALOGUE[category]:
+            print(f"  WARN: {exercise_name!r} not in category {category!r} for {name!r} — skipped", file=sys.stderr)
+            return None
+
+    reps_str = reps.strip()
     is_numeric = reps_str.isdigit()
-    parts = [name, reps_str]
+    parts = [name, reps_str] if name else [exercise_name.lower(), reps_str]
     if notes:
         parts.append(notes)
     description = " | ".join(parts)
+
     return {
         "type": "ExecutableStepDTO",
         "stepOrder": order,
@@ -624,14 +634,11 @@ def _strength_workout(s: dict) -> dict | None:
     steps = [warmup]
     step_order = 2
     for ex in exercises:
-        ex_name = ex.get("name", "")
         sets = int(ex.get("sets", 3))
-        reps = str(ex.get("reps", "10"))
-        notes = str(ex.get("notes", ""))
 
-        ex_step = exercise_step(step_order + 1, ex_name, sets, reps, child_step_id=1, notes=notes)
+        ex_step = exercise_step(step_order + 1, ex, child_step_id=1)
         if ex_step is None:
-            continue  # unmapped — already warned
+            continue  # unresolvable — already warned
 
         rest_step = _strength_rest_step(step_order + 2, child_step_id=1)
 

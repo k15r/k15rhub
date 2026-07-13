@@ -20,7 +20,7 @@ Do not ask for clarification — work with what you are given.
 All data is passed as structured YAML — never as raw markdown. The skill resolves
 and structures everything before invoking the agent.
 
-- **ACTION** — one of: `new`, `update`, `status`, `adapt-week`, empty/blank (treat as `status`), or a free-text coaching question
+- **ACTION** — one of: `new`, `update`, `status`, `adapt-week`, `regen-strength`, empty/blank (treat as `status`), or a free-text coaching question
 - **CONFIG** — full contents of `~/.marathon-coach/config.yaml`, optionally followed by `race_type_override: <type>`
 - **ACTIVITY_HISTORY** — YAML list of the 14 most recent activity entries from `lauftagebuch.yaml` (newest first); fields: `date`, `type`, `sport`, `distance_km`, `pace`, `hf_avg`, `training_effect`, `soll_pace`, `reflexion_aufgefallen`, etc.
 - **HEALTH_HISTORY** — YAML list of the 14 most recent daily health summaries from `gesundheitstagebuch.yaml` (newest first); fields: `date`, `hf_ruhe`, `hrv_last_night`, `hrv_status`, `schlaf_score`, `body_battery_max`, `stress_avg`, `gewicht_kg`, `koerperfett_pct`
@@ -306,6 +306,34 @@ Typical duration: 20–30 min. Keep it brief — completion matters more than vo
 
 Never attach a `strength` sub-block to quality sessions (tempo, intervals, long_run).
 
+**Selecting exercises from the Garmin catalogue:**
+
+All exercises must use valid `garmin_category` / `garmin_exercise` keys from the FIT SDK catalogue (`garmin_exercises.json`, shipped with the plugin). Invalid keys are rejected at upload time.
+
+Rules for exercise selection:
+
+1. **Prefer bodyweight** — choose exercises that require no equipment unless you know the user has it. Avoid keys containing `barbell`, `dumbbell`, `cable`, `kettlebell`, `machine`, `bosu`, `swiss_ball`, `suspension`, or `resistance_band` unless the user has confirmed that equipment is available.
+2. **Ask about equipment once** — if a prescribed exercise would be significantly better with equipment (e.g. weighted calf raises), ask the user at plan creation time whether they have it. Record the answer in a `notes` field in the config and respect it for all future weeks.
+3. **Use `name` for display** — set `name` to a clear human-readable label (German or English per config language). This is what shows on the watch. It does not need to match the FIT SDK key exactly.
+4. **Use `notes` for cues** — add a short coaching cue as `notes` when execution quality matters (e.g. `"Hüfte stabil, nicht rotieren"`). Keep it under 60 characters.
+
+Common running-relevant categories and bodyweight-friendly keys:
+
+| Category | Useful bodyweight keys |
+| --- | --- |
+| `HIP_STABILITY` | `dead_bug`, `quadruped`, `quadruped_with_leg_lift`, `side_lying_leg_raise`, `hip_circles`, `fire_hydrant_kicks` |
+| `HIP_RAISE` | `hip_raise`, `single_leg_hip_raise`, `clams` |
+| `PLANK` | `plank`, `side_plank`, `bear_crawl`, `mountain_climber` |
+| `HYPEREXTENSION` | `hollow_hold_and_roll`, `cobra`, `superman` |
+| `SQUAT` | `air_squat`, `pistol_squat`, `figure_four_squats` |
+| `LUNGE` | `lunge`, `curtsy_lunge`, `diagonal_lunge`, `reverse_lunge` |
+| `DEADLIFT` | `single_leg_rdl_circuit`, `straight_leg_deadlift` |
+| `CALF_RAISE` | `standing_calf_raise`, `single_leg_standing_calf_raise`, `3_way_single_leg_calf_raise` |
+| `PUSH_UP` | `push_up`, `decline_push_up`, `diamond_push_up` |
+| `WARM_UP` | `ankle_circles`, `hip_circles`, `leg_swings`, `walking_high_knees` |
+| `PLYO` | `alternating_jump_lunge`, `body_weight_jump_squat`, `box_jump` |
+| `BANDED_EXERCISES` | `clam_shells`, `monster_walk`, `lateral_band_walk` |
+
 In the markdown: fill the `Kraft/Stabi` cell with a compact description, e.g. `Hüftstabi 20'` or `Rumpf + Waden 25'`.
 
 ### 4f — Adapt week (only when ACTION = `adapt-week`)
@@ -379,6 +407,36 @@ COACHING_NOTE:
 - Never schedule two quality sessions on consecutive days
 - The long run stays on its original day unless it was missed entirely, in which case shift it at most 1 day
 - Do not adjust taper weeks — if the current week is a taper week, preserve all sessions exactly
+
+---
+
+### 4g — Regen strength (only when ACTION = `regen-strength`)
+
+This action rewrites all `strength` blocks in the supplied week files, replacing any exercises that use the legacy `name`-only format (or have incorrect/missing `garmin_category`/`garmin_exercise` fields) with valid entries from the FIT SDK catalogue.
+
+**Context supplied:**
+- **WEEK_FILES** — list of absolute paths to week YAML files to regenerate
+- **EQUIPMENT** — optional free-text note on available equipment (from config `notes` or user input)
+
+**Process:**
+
+1. Read each week YAML. For every session that has a `strength` block:
+   a. Review each exercise entry.
+   b. If `garmin_category` and `garmin_exercise` are already valid catalogue entries — leave them unchanged.
+   c. If they are missing or incorrect — select a replacement from the catalogue that best matches the coaching intent of the original `name` field, following the bodyweight-first and equipment rules from section 4e.
+   d. Set `garmin_category`, `garmin_exercise`, keep or update `name` (human-readable), preserve existing `sets`/`reps`/`notes`.
+
+2. Emit `REWRITE_YAML` blocks (same format as `adapt-week`) for every file that changed. Emit `REWRITE_FILE` blocks only if the markdown Kraft/Stabi cell content changes (it usually won't — the cell uses human names, not FIT keys).
+
+3. After the blocks, emit:
+
+```text
+REGEN_DATES: <comma-separated YYYY-MM-DD list of dates whose strength blocks changed, or "none">
+COACHING_NOTE:
+<1–2 sentences summarising what changed>
+```
+
+The calling skill uses `REGEN_DATES` to delete and re-upload only the affected Garmin workouts.
 
 ---
 
@@ -456,11 +514,15 @@ strength:
   duration_min: 20
   focus: "<concise label, e.g. Hüftstabi, Rumpf, Athletik>"
   exercises:
-    - name: "<exercise name — must match an Übungen/ file>"
+    - garmin_category: "<FIT SDK category key, e.g. HIP_STABILITY>"
+      garmin_exercise: "<FIT SDK exercise key, e.g. DEAD_BUG>"
+      name: "<human-readable display name shown on watch>"
       sets: 3
       reps: "15"        # use a string for ranges or time: "12–15", "30 s", "10/Seite"
-      notes: "<optional coaching cue shown on the watch, e.g. 'langsam und kontrolliert'>"
-    - name: "<exercise name>"
+      notes: "<optional coaching cue shown on the watch>"
+    - garmin_category: "CALF_RAISE"
+      garmin_exercise: "SINGLE_LEG_STANDING_CALF_RAISE"
+      name: "Einbeiniges Wadenheben"
       sets: 2
       reps: "12/Seite"
 ```

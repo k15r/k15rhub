@@ -5,7 +5,7 @@ description: >-
   the user's fitness level, goals, and recent activity history from Garmin Connect.
   Adapts to any experience level and race type (5k, 10k,
   half-marathon, marathon, ultramarathon). Supports onboarding for new users.
-argument-hint: "[user=<name>] [race=<type>] [new | update | status | sync | <coaching question>]"
+argument-hint: "[user=<name>] [race=<type>] [new | update | status | sync | regen-strength | <coaching question>]"
 allowed-tools:
   - Read(./**)
   - Edit(./**)
@@ -26,6 +26,7 @@ allowed-tools:
 - `update` — adjust an existing plan (schedule change, race result, injury)
 - `status` — assess current training state
 - `sync` — push current plan's future sessions to Garmin Connect (delete and replace)
+- `regen-strength` — rewrite all strength blocks in one or more week files using valid Garmin exercise keys; re-uploads affected dates
 - Free text → coaching question, adjustment, or analysis
 
 ---
@@ -50,7 +51,7 @@ After resolving the user, parse the remaining arguments:
 
 1. If `race=<type>` appears, extract it and set `$RACE_TYPE_OVERRIDE = <type>`. Remove it from the remaining string.
 2. From what remains, identify `$ACTION`:
-   - `new`, `update`, `status`, or `sync` → use as-is
+   - `new`, `update`, `status`, `sync`, or `regen-strength` → use as-is
    - Empty or blank → set `$ACTION = status`
    - Anything else → treat as a free-text coaching question
 
@@ -196,3 +197,27 @@ uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --
 ```
 
 This pushes all sessions within the next 7 days, replacing any previously scheduled workouts for those dates. Report how many workouts were pushed and on which dates.
+
+If ACTION is `regen-strength`:
+
+1. Resolve the plan directory and identify the week files to process:
+   - If a path argument follows `regen-strength`, use it as an explicit week YAML path or plan directory.
+   - Otherwise, default to the full current plan directory.
+
+2. Collect the list of week YAML paths to regenerate. Also read any `notes` / equipment information from `$CONFIG`.
+
+3. Invoke the `marathon-coach` agent with ACTION = `regen-strength`, passing:
+   - **WEEK_FILES:** newline-separated list of absolute YAML paths
+   - **EQUIPMENT:** value of `notes` field from config (or empty)
+   - **CONFIG**, **TODAY** as usual
+
+4. Parse `REWRITE_YAML` / `REWRITE_FILE` blocks from the agent response and apply them (same logic as `adapt-week`).
+
+5. Parse `REGEN_DATES`. For each date in the list, delete and re-upload the Garmin workout:
+
+```bash
+uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --delete-date <date>
+uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --week <week-yaml-path>
+```
+
+6. Report which weeks were updated, which dates were re-synced to Garmin, and the agent's `COACHING_NOTE`.

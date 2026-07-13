@@ -475,8 +475,10 @@ class TestBuildWorkoutPayload:
 # ---------------------------------------------------------------------------
 
 _STRENGTH_EXERCISES = [
-    {"name": "Clamshells", "sets": 3, "reps": "15"},
-    {"name": "Wadenheben", "sets": 3, "reps": "12"},
+    {"garmin_category": "BANDED_EXERCISES", "garmin_exercise": "CLAM_SHELLS",
+     "name": "Clamshells", "sets": 3, "reps": "15"},
+    {"garmin_category": "CALF_RAISE", "garmin_exercise": "STANDING_CALF_RAISE",
+     "name": "Wadenheben", "sets": 3, "reps": "12"},
 ]
 
 
@@ -595,28 +597,54 @@ class TestEasyWithStrength:
 
 
 class TestExerciseStep:
-    def test_known_exercise_maps_category(self):
-        step = exercise_step(1, "Clamshells", 3, "15")
+    def _ex(self, **kwargs):
+        base = {"garmin_category": "BANDED_EXERCISES", "garmin_exercise": "CLAM_SHELLS",
+                "name": "Clamshells", "sets": 3, "reps": "15"}
+        base.update(kwargs)
+        return base
+
+    def test_known_garmin_fields(self):
+        step = exercise_step(1, self._ex())
         assert step["category"] == "BANDED_EXERCISES"
+        assert step["exerciseName"] == "CLAM_SHELLS"
+
+    def test_legacy_name_lookup(self):
+        step = exercise_step(1, {"name": "Plank", "sets": 3, "reps": "30 s"})
+        assert step["category"] == "PLANK"
+        assert step["exerciseName"] == "PLANK"
 
     def test_unknown_exercise_returns_none(self):
-        assert exercise_step(1, "Unbekannte Übung", 3, "10") is None
+        assert exercise_step(1, {"name": "Unbekannte Übung", "sets": 3, "reps": "10"}) is None
+
+    def test_invalid_garmin_category_returns_none(self):
+        assert exercise_step(1, {"garmin_category": "FAKE", "garmin_exercise": "THING",
+                                  "name": "x", "sets": 3, "reps": "10"}) is None
+
+    def test_invalid_garmin_exercise_returns_none(self):
+        assert exercise_step(1, {"garmin_category": "PLANK", "garmin_exercise": "NONEXISTENT",
+                                  "name": "x", "sets": 3, "reps": "10"}) is None
 
     def test_numeric_reps_sets_end_condition_reps(self):
-        step = exercise_step(1, "Plank", 3, "30")
+        step = exercise_step(1, self._ex(reps="15"))
         assert step["endCondition"]["conditionTypeKey"] == "reps"
-        assert step["endConditionValue"] == 30.0
+        assert step["endConditionValue"] == 15.0
 
     def test_non_numeric_reps_sets_lap_button(self):
-        step = exercise_step(1, "Plank", 3, "30 s")
+        step = exercise_step(1, self._ex(reps="30 s"))
         assert step["endCondition"]["conditionTypeKey"] == "lap.button"
 
+    def test_description_includes_name_reps_notes(self):
+        step = exercise_step(1, self._ex(notes="langsam"))
+        assert "Clamshells" in step["description"]
+        assert "15" in step["description"]
+        assert "langsam" in step["description"]
+
     def test_step_type_is_interval(self):
-        step = exercise_step(1, "Wadenheben", 4, "12")
+        step = exercise_step(1, self._ex())
         assert step["stepType"]["stepTypeKey"] == "interval"
 
     def test_weight_value_present(self):
-        step = exercise_step(1, "Clamshells", 3, "15")
+        step = exercise_step(1, self._ex())
         assert step["weightValue"] == -1.0
         assert step["weightUnit"]["unitKey"] == "kilogram"
 
