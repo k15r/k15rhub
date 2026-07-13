@@ -5,7 +5,7 @@ description: >-
   schedules them on the correct dates. Deletes and replaces any existing workouts for
   future sessions. Use this after manually editing a week YAML, after adapt-week, or
   any time the plan and Garmin calendar are out of sync. Requires garmin_email in config.
-argument-hint: "[user=<name>] [week | plan] [optional: path to week YAML or plan dir]"
+argument-hint: "[user=<name>] [week | plan | migrate] [optional: path to week YAML or plan dir]"
 allowed-tools:
   - Read(./**)
   - Read(~/.marathon-coach/**)
@@ -24,6 +24,7 @@ uploaded workouts for the same dates before uploading the new versions.
 - `user=<name>` *(optional)* — which user's config to use
 - `week` *(optional)* — sync only the next 7 days (default when no scope given); optionally followed by a path to a specific week YAML
 - `plan` *(optional)* — sync all future weeks in the active plan
+- `migrate` *(optional)* — backfill `strength` sub-blocks from markdown Kraft/Stabi cells into week YAMLs, then offer to sync; optionally followed by a path to a plan directory
 - Path argument *(optional)* — explicit path to a week YAML or plan directory
 
 ---
@@ -52,8 +53,35 @@ Determine scope from remaining arguments:
 - `plan <path>` → sync all future weeks in that plan directory
 - `plan` → derive plan directory from `current_plan` and `race_type`:
   `<output_dir>/<Race-Type-Folder>/<current_plan>/`
+- `migrate <path>` → run the migration script (see Step 1b), then ask the user whether to also sync
+- `migrate` (no path) → derive plan directory as for `plan`, then same as above
 
 If `current_plan` is empty and no path was provided, inform the user and stop.
+
+---
+
+## Step 1b — Migrate (only when scope = `migrate`)
+
+Run the migration script in dry-run mode first and show the user what would change:
+
+```bash
+uv run --script <skill-dir>/../analyze-activity/migrate-strength.py <plan-dir> --dry-run
+```
+
+If there is nothing to migrate, tell the user and stop.
+
+If there are sessions to migrate, show the dry-run output and ask the user to confirm before applying:
+
+```bash
+uv run --script <skill-dir>/../analyze-activity/migrate-strength.py <plan-dir>
+```
+
+After a successful migration, remind the user:
+
+- The `exercises` lists are empty — they should fill them in manually or run `/marathon-coach update` to have the coach rewrite the weeks with proper exercise details.
+- Once exercises are filled in, run `/sync-garmin plan` to upload the strength workouts to Garmin.
+
+Do **not** automatically proceed to Step 2 after migration — stop here and let the user decide.
 
 ---
 
