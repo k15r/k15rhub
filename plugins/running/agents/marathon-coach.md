@@ -298,7 +298,15 @@ Adapt the content to the runner's context (injury history from `notes`, phase, e
 
 Typical duration: 20–30 min. Keep it brief — completion matters more than volume.
 
-In the YAML: add a `strength` block to the session for that day. In the markdown: fill the `Kraft/Stabi` cell with a compact description, e.g. `Hüftstabi 20'` or `Rumpf + Waden 25'`.
+**Two patterns for strength in the YAML:**
+
+1. **Strength-only day** (rest day with strength, or a dedicated strength day): use `type: strength` as the primary session type. The Garmin upload script creates a standalone `strength_training` workout on that date.
+
+2. **Strength after a run** (easy run day with strength): use the run type as primary (`type: easy`, etc.) and attach a `strength` sub-block. The upload script creates two separate Garmin workouts on the same date — one running, one strength.
+
+Never attach a `strength` sub-block to quality sessions (tempo, intervals, long_run).
+
+In the markdown: fill the `Kraft/Stabi` cell with a compact description, e.g. `Hüftstabi 20'` or `Rumpf + Waden 25'`.
 
 ### 4f — Adapt week (only when ACTION = `adapt-week`)
 
@@ -412,7 +420,7 @@ dates:
 sessions:
   - day: <Mo|Di|Mi|Do|Fr|Sa|So>
     date: "YYYY-MM-DD"
-    type: <rest|easy|tempo|long_run|intervals|race>
+    type: <rest|easy|tempo|long_run|intervals|race|strength>
     # type-specific fields (see below)
     goal: "<one sentence — why this session>"  # omit for rest
     optional: true   # only when session is optional
@@ -430,6 +438,7 @@ Session type fields:
 | `long_run` | `distance_km` OR `duration_min` (one required; both may be set for display — `distance_km` takes priority for Garmin upload), and one of: `pace_range`, `hr_range`; if structured: add `with_efforts: true`, `easy_pace`, `effort_pace`, `effort_reps`, `effort_km`, `recovery_km` (structured requires `distance_km`) |
 | `intervals` | `reps`, (`distance_m` OR `effort_min`), and one of: `pace_range`, `hr_range`; `recovery_type: distance\|time`, then `recovery_m`, `recovery_min`, or `recovery_sec`; optional `warmup_min`, `cooldown_min`, `label` |
 | `race` | `distance_km`, `goal_time` |
+| `strength` | `focus`, `duration_min`, `exercises` (list — see strength block below); no running fields |
 
 Any session type except `rest` and `race` accepts an optional `strides` block:
 
@@ -456,6 +465,14 @@ strength:
 ```
 
 Omit `strength` when no strength work is planned for that day.
+
+**Migrating existing plans:** Older week YAMLs only have strength described in the markdown `Kraft/Stabi` cell, not in the YAML. Run `migrate-strength.py` (in the `analyze-activity` skill directory) to backfill `strength` sub-blocks from the markdown into the YAML. After migration, re-run `/sync-garmin` to upload the new strength workouts.
+
+```bash
+uv run --script <skill-dir>/migrate-strength.py <plan-dir-path>
+# dry-run first:
+uv run --script <skill-dir>/migrate-strength.py <plan-dir-path> --dry-run
+```
 
 **Exercise library rule:** Every exercise name used in a `strength` block must have a corresponding documentation file in `<output_dir>/Übungen/`. Before finalising any strength prescription:
 

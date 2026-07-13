@@ -242,6 +242,10 @@ def _running_sport() -> dict:
     return {"sportTypeId": 1, "sportTypeKey": "running", "displayOrder": 1}
 
 
+def _strength_sport() -> dict:
+    return {"sportTypeId": 5, "sportTypeKey": "strength_training", "displayOrder": 5}
+
+
 def make_step(order: int, type_id: int, type_key: str,
               cond_id: int, cond_key: int, cond_value: float,
               target: dict) -> dict:
@@ -354,14 +358,16 @@ def repeat_group(order: int, iterations: int, steps: list) -> dict:
     }
 
 
-def build_workout_payload(name: str, steps: list, estimated_secs: int) -> dict:
+def build_workout_payload(name: str, steps: list, estimated_secs: int,
+                          sport: dict | None = None) -> dict:
+    sport = sport or _running_sport()
     return {
         "workoutName": name,
-        "sportType": _running_sport(),
+        "sportType": sport,
         "estimatedDurationInSecs": estimated_secs,
         "workoutSegments": [{
             "segmentOrder": 1,
-            "sportType": _running_sport(),
+            "sportType": sport,
             "workoutSteps": steps,
         }],
     }
@@ -416,45 +422,170 @@ def append_strides(steps: list, strides: dict, base_order: int, estimated_secs: 
 # Session → Garmin workout (from YAML session dict)
 # ---------------------------------------------------------------------------
 
-def session_to_workout(session: dict) -> dict | None:
-    """Convert a YAML session dict to a Garmin workout payload dict.
-    Returns None for rest, optional, or unhandled types."""
-    stype = session.get("type", "rest")
-    if stype == "rest":
-        return None
-    if session.get("optional"):
+# Garmin exercise category / name mappings for common running-strength exercises.
+# Key = lowercase exercise name from YAML; value = (categoryId, categoryKey, nameId, nameKey).
+# Unmapped exercises fall back to category OTHER (0) with name OTHER (0).
+_EXERCISE_MAP: dict[str, tuple[int, str, int, str]] = {
+    # Hips / glutes
+    "clamshells":                     (13, "HIP_STABILITY", 0, "CLAMSHELL"),
+    "seitliches beinheben":           (13, "HIP_STABILITY", 1, "FIRE_HYDRANTS"),
+    "hüftabduktion":                  (13, "HIP_STABILITY", 2, "HIP_ABDUCTION"),
+    "hüftkreisen":                    (13, "HIP_STABILITY", 3, "HIP_CIRCLES"),
+    # Legs
+    "bulgarian split squat":          (8,  "SQUAT",         25, "SINGLE_LEG_SQUAT"),
+    "einbeinige kniebeuge":           (8,  "SQUAT",         25, "SINGLE_LEG_SQUAT"),
+    "kniebeuge":                      (8,  "SQUAT",         0,  "SQUAT"),
+    "einbeiniges kreuzheben":         (5,  "DEADLIFT",      5,  "SINGLE_LEG_DEADLIFT"),
+    "einbeinige rdl":                 (5,  "DEADLIFT",      5,  "SINGLE_LEG_DEADLIFT"),
+    "einbeiniges rdl":                (5,  "DEADLIFT",      5,  "SINGLE_LEG_DEADLIFT"),
+    "rdl":                            (5,  "DEADLIFT",      3,  "ROMANIAN_DEADLIFT"),
+    "kreuzheben":                     (5,  "DEADLIFT",      0,  "DEADLIFT"),
+    # Calves
+    "wadenheben":                     (3,  "CALF_RAISE",    0,  "CALF_RAISE"),
+    "wadenheben exzentrisch":         (3,  "CALF_RAISE",    4,  "SINGLE_LEG_CALF_RAISE"),
+    "wadenheben exz.":                (3,  "CALF_RAISE",    4,  "SINGLE_LEG_CALF_RAISE"),
+    "einbeiniges wadenheben":         (3,  "CALF_RAISE",    4,  "SINGLE_LEG_CALF_RAISE"),
+    # Core
+    "plank":                          (14, "PLANK",         0,  "PLANK"),
+    "seitstütz":                      (14, "PLANK",         5,  "SIDE_PLANK"),
+    "seitstütz links":                (14, "PLANK",         5,  "SIDE_PLANK"),
+    "seitstütz rechts":               (14, "PLANK",         5,  "SIDE_PLANK"),
+    "crunch":                         (0,  "CORE",          2,  "CRUNCH"),
+    "dead bug":                       (0,  "CORE",          7,  "DEAD_BUG"),
+    "bird dog":                       (0,  "CORE",          4,  "BIRD_DOG"),
+    "brücke":                         (0,  "CORE",          5,  "BRIDGE"),
+    "einbeinige brücke":              (0,  "CORE",          6,  "SINGLE_LEG_BRIDGE"),
+    # Tibialis / shin
+    "tibialis anterior heben":        (3,  "CALF_RAISE",    6,  "TIBIALIS_RAISE"),
+    "tibialis heben":                 (3,  "CALF_RAISE",    6,  "TIBIALIS_RAISE"),
+    # Upper body (supporting)
+    "liegestütz":                     (11, "PUSH_UP",       0,  "PUSH_UP"),
+    "row":                            (9,  "ROW",           0,  "BENT_OVER_ROW"),
+    # Jumps / plyometrics
+    "pogos":                          (15, "PLYOMETRIC",    4,  "JUMP_ROPE_SINGLE_UNS"),
+    "einbeinige hüpfer":              (15, "PLYOMETRIC",    0,  "BOX_JUMP"),
+    "sprünge":                        (15, "PLYOMETRIC",    0,  "BOX_JUMP"),
+}
+
+
+def _exercise_ids(name: str) -> tuple[int, str, int, str]:
+    return _EXERCISE_MAP.get(name.lower().strip(), (0, "OTHER", 0, "OTHER"))
+
+
+def exercise_step(order: int, name: str, sets: int, reps: str) -> dict:
+    cat_id, cat_key, ex_id, ex_key = _exercise_ids(name)
+    return {
+        "type": "ExecutableStepDTO",
+        "stepOrder": order,
+        "stepType": {"stepTypeId": 8, "stepTypeKey": "main", "displayOrder": 8},
+        "endCondition": {
+            "conditionTypeId": 3 if str(reps).isdigit() else 1,
+            "conditionTypeKey": "reps" if str(reps).isdigit() else "lap.button",
+            "displayOrder": 3 if str(reps).isdigit() else 1,
+            "displayable": True,
+        },
+        "endConditionValue": float(reps) if str(reps).isdigit() else None,
+        "targetType": no_target()["targetType"],
+        "exerciseCategory": {"categoryId": cat_id, "categoryKey": cat_key},
+        "exerciseName": {"exerciseId": ex_id, "exerciseKey": ex_key},
+        "numberOfSets": sets,
+        "description": name,
+    }
+
+
+def _strength_workout(s: dict) -> dict | None:
+    """Build a strength_training Garmin workout from a strength block dict.
+
+    s is either a full session (type=strength) or the value of session['strength'].
+    Expected keys: focus, duration_min, exercises (list of {name, sets, reps}).
+    """
+    block = s.get("strength", s) if s.get("type") == "strength" else s
+    focus = block.get("focus", "Kraft/Stabi")
+    duration_min = block.get("duration_min", 20)
+    exercises = block.get("exercises", [])
+
+    if not exercises:
+        print("  SKIP strength: no exercises defined", file=sys.stderr)
         return None
 
-    if stype == "easy":
+    name = f"Kraft {focus} {int(duration_min)}'"
+    steps = []
+    for i, ex in enumerate(exercises, start=1):
+        ex_name = ex.get("name", "")
+        sets = int(ex.get("sets", 3))
+        reps = str(ex.get("reps", "10"))
+        repeat_steps = [exercise_step(1, ex_name, sets, reps)]
+        steps.append(repeat_group(i, sets, repeat_steps))
+
+    return {
+        "name": name,
+        "steps": steps,
+        "estimated_secs": int(float(duration_min) * 60),
+        "sport": _strength_sport(),
+    }
+
+
+
+def session_to_workout(session: dict) -> list[dict]:
+    """Convert a YAML session dict to a list of Garmin workout payload dicts.
+
+    Returns [] for rest (with no strength block), optional sessions, or unhandled types.
+    May return two specs when a running session also has a strength sub-block.
+    """
+    stype = session.get("type", "rest")
+    if session.get("optional"):
+        return []
+
+    specs = []
+
+    if stype == "rest":
+        pass  # no running workout; strength sub-block handled below
+    elif stype == "strength":
+        spec = _strength_workout(session)
+        if spec:
+            specs.append(spec)
+        return specs
+    elif stype == "easy":
         spec = _easy_workout(session)
+        if spec:
+            specs.append(spec)
     elif stype == "tempo":
         spec = _tempo_workout(session)
+        if spec:
+            specs.append(spec)
     elif stype == "long_run":
         spec = _long_run_workout(session)
+        if spec:
+            specs.append(spec)
     elif stype == "intervals":
         spec = _intervals_workout(session)
+        if spec:
+            specs.append(spec)
     elif stype == "race":
-        return None  # races are not pre-programmed
+        return []  # races are not pre-programmed
     else:
         print(f"  SKIP unknown type {stype!r}", file=sys.stderr)
-        return None
+        return []
 
-    if spec is None:
-        return None
-
-    # Append strides block if present on any session type
-    strides = session.get("strides")
-    if strides:
+    # Append strides block to the running spec if present
+    if specs and session.get("strides"):
+        strides = session["strides"]
         reps = int(strides.get("reps", 4))
         dist_m = int(strides.get("distance_m", 100))
         pace_note = strides.get("pace_note", "")
         label = f" + {reps}× Steig.{(' ' + pace_note) if pace_note else ''}"
-        spec["name"] = spec["name"] + label
-        spec["steps"], spec["estimated_secs"] = append_strides(
-            spec["steps"], strides, len(spec["steps"]) + 1, spec["estimated_secs"]
+        specs[0]["name"] = specs[0]["name"] + label
+        specs[0]["steps"], specs[0]["estimated_secs"] = append_strides(
+            specs[0]["steps"], strides, len(specs[0]["steps"]) + 1, specs[0]["estimated_secs"]
         )
 
-    return spec
+    # Strength sub-block on any session type (including rest)
+    if session.get("strength"):
+        strength_spec = _strength_workout(session["strength"])
+        if strength_spec:
+            specs.append(strength_spec)
+
+    return specs
 
 
 def _easy_workout(s: dict) -> dict:
@@ -634,7 +765,8 @@ def load_week_yaml(path: Path) -> dict:
 
 def upload_and_schedule(garmin, tokenstore: str, date_str: str, spec: dict) -> None:
     name = spec["name"]
-    payload = build_workout_payload(name, spec["steps"], spec["estimated_secs"])
+    sport = spec.get("sport")
+    payload = build_workout_payload(name, spec["steps"], spec["estimated_secs"], sport)
 
     print(f"  Uploading '{name}' for {date_str} …", file=sys.stderr)
     result = garmin.upload_workout(payload)
@@ -678,17 +810,16 @@ def dry_run_week(yaml_path: Path, fmt: str = "table") -> None:
     payloads = []
     for session in data.get("sessions", []):
         date_str = session.get("date", "")
-        stype = session.get("type", "rest")
-        if stype == "rest" or session.get("optional"):
+        if session.get("optional"):
             continue
-        spec = session_to_workout(session)
-        if spec is None:
-            continue
-        payload = build_workout_payload(spec["name"], spec["steps"], spec["estimated_secs"])
-        rows.append({"date": date_str, "name": spec["name"],
-                     "estimated_min": spec["estimated_secs"] // 60,
-                     "steps": len(spec["steps"])})
-        payloads.append({"date": date_str, "workout": payload})
+        specs = session_to_workout(session)
+        for spec in specs:
+            sport = spec.get("sport")
+            payload = build_workout_payload(spec["name"], spec["steps"], spec["estimated_secs"], sport)
+            rows.append({"date": date_str, "name": spec["name"],
+                         "estimated_min": spec["estimated_secs"] // 60,
+                         "steps": len(spec["steps"])})
+            payloads.append({"date": date_str, "workout": payload})
 
     if not rows:
         print("No uploadable sessions found.")
@@ -734,12 +865,13 @@ def process_week(garmin, tokenstore: str, yaml_path: Path,
             continue
         if date_str > horizon:
             continue
-        spec = session_to_workout(session)
-        if spec is None:
+        specs = session_to_workout(session)
+        if not specs:
             continue
         # Delete any existing tracked workout for this date before uploading
         delete_date_workouts(garmin, tokenstore, date_str)
-        upload_and_schedule(garmin, tokenstore, date_str, spec)
+        for spec in specs:
+            upload_and_schedule(garmin, tokenstore, date_str, spec)
 
 
 # ---------------------------------------------------------------------------

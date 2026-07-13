@@ -46,6 +46,7 @@ step_name_suffix    = _mod.step_name_suffix
 append_strides      = _mod.append_strides
 session_to_workout  = _mod.session_to_workout
 build_workout_payload = _mod.build_workout_payload
+exercise_step       = _mod.exercise_step
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +67,13 @@ def end_condition(step):
 
 def target_type(step):
     return step.get("targetType", {}).get("workoutTargetTypeKey")
+
+
+def first(session: dict):
+    """Return the first spec from session_to_workout (the running spec)."""
+    specs = session_to_workout(session)
+    assert specs, f"Expected at least one spec for {session}"
+    return specs[0]
 
 
 # ---------------------------------------------------------------------------
@@ -186,33 +194,33 @@ class TestEasyWorkout:
         return base
 
     def test_name_contains_subtype_and_duration(self):
-        s = session_to_workout(self._session())
+        s = first(self._session())
         assert "Jogging" in s["name"]
         assert "30'" in s["name"]
 
     def test_name_contains_pace_midpoint(self):
-        s = session_to_workout(self._session())
+        s = first(self._session())
         assert "5:45" in s["name"]
 
     def test_single_timed_main_step(self):
-        s = session_to_workout(self._session())
+        s = first(self._session())
         assert len(s["steps"]) == 1
         assert s["steps"][0]["stepType"]["stepTypeKey"] == "main"
         assert end_condition(s["steps"][0]) == "time"
 
     def test_estimated_secs(self):
-        s = session_to_workout(self._session(duration_min=45))
+        s = first(self._session(duration_min=45))
         assert s["estimated_secs"] == 2700
 
     def test_hr_target(self):
-        s = session_to_workout(self._session(pace_range=None, hr_range="130–140"))
+        s = first(self._session(pace_range=None, hr_range="130–140"))
         assert target_type(s["steps"][0]) == "heart.rate.zone"
 
-    def test_rest_returns_none(self):
-        assert session_to_workout({"type": "rest"}) is None
+    def test_rest_returns_empty(self):
+        assert session_to_workout({"type": "rest"}) == []
 
-    def test_optional_returns_none(self):
-        assert session_to_workout(self._session(optional=True)) is None
+    def test_optional_returns_empty(self):
+        assert session_to_workout(self._session(optional=True)) == []
 
 
 # ---------------------------------------------------------------------------
@@ -226,31 +234,31 @@ class TestTempoWorkout:
         return base
 
     def test_three_steps_wu_main_cd(self):
-        s = session_to_workout(self._session())
+        s = first(self._session())
         keys = step_types(s)
         assert "warmup" in keys
         assert "main" in keys
         assert "cooldown" in keys
 
     def test_distance_based(self):
-        s = session_to_workout({"type": "tempo", "distance_km": 8, "pace_range": "4:10–4:20"})
+        s = first({"type": "tempo", "distance_km": 8, "pace_range": "4:10–4:20"})
         main = next(st for st in s["steps"] if st.get("stepType", {}).get("stepTypeKey") == "main")
         assert end_condition(main) == "distance"
         assert main["endConditionValue"] == 8000.0
 
     def test_lap_button_warmup_when_no_warmup_min(self):
-        s = session_to_workout(self._session())
+        s = first(self._session())
         wu = s["steps"][0]
         assert end_condition(wu) == "lap.button"
 
     def test_timed_warmup_when_warmup_min_set(self):
-        s = session_to_workout(self._session(warmup_min=10))
+        s = first(self._session(warmup_min=10))
         wu = s["steps"][0]
         assert end_condition(wu) == "time"
         assert wu["endConditionValue"] == 600.0
 
-    def test_missing_effort_and_distance_returns_none(self):
-        assert session_to_workout({"type": "tempo", "pace_range": "4:10–4:20"}) is None
+    def test_missing_effort_and_distance_returns_empty(self):
+        assert session_to_workout({"type": "tempo", "pace_range": "4:10–4:20"}) == []
 
 
 # ---------------------------------------------------------------------------
@@ -259,16 +267,16 @@ class TestTempoWorkout:
 
 class TestLongRunWorkout:
     def test_distance_based_name(self):
-        s = session_to_workout({"type": "long_run", "distance_km": 22, "pace_range": "5:10–5:20"})
+        s = first({"type": "long_run", "distance_km": 22, "pace_range": "5:10–5:20"})
         assert "22" in s["name"]
 
     def test_time_based(self):
-        s = session_to_workout({"type": "long_run", "duration_min": 90, "pace_range": "5:10–5:20"})
+        s = first({"type": "long_run", "duration_min": 90, "pace_range": "5:10–5:20"})
         assert end_condition(s["steps"][0]) == "time"
         assert s["estimated_secs"] == 5400
 
     def test_with_efforts_structure(self):
-        s = session_to_workout({
+        s = first({
             "type": "long_run",
             "distance_km": 20,
             "with_efforts": True,
@@ -280,8 +288,8 @@ class TestLongRunWorkout:
         })
         assert any(st.get("type") == "RepeatGroupDTO" for st in s["steps"])
 
-    def test_missing_both_returns_none(self):
-        assert session_to_workout({"type": "long_run", "pace_range": "5:00–5:10"}) is None
+    def test_missing_both_returns_empty(self):
+        assert session_to_workout({"type": "long_run", "pace_range": "5:00–5:10"}) == []
 
 
 # ---------------------------------------------------------------------------
@@ -302,40 +310,40 @@ class TestIntervalsWorkout:
         return base
 
     def test_has_repeat_group(self):
-        s = session_to_workout(self._session())
+        s = first(self._session())
         assert any(st.get("type") == "RepeatGroupDTO" for st in s["steps"])
 
     def test_repeat_group_iterations(self):
-        s = session_to_workout(self._session(reps=5))
+        s = first(self._session(reps=5))
         rg = next(st for st in s["steps"] if st.get("type") == "RepeatGroupDTO")
         assert rg["numberOfIterations"] == 5
 
     def test_interval_step_distance(self):
-        s = session_to_workout(self._session(distance_m=400))
+        s = first(self._session(distance_m=400))
         rg = next(st for st in s["steps"] if st.get("type") == "RepeatGroupDTO")
         interval = rg["workoutSteps"][0]
         assert interval["endConditionValue"] == 400.0
 
     def test_recovery_lap_button_when_distance(self):
-        s = session_to_workout(self._session(recovery_type="distance", recovery_m=200))
+        s = first(self._session(recovery_type="distance", recovery_m=200))
         rg = next(st for st in s["steps"] if st.get("type") == "RepeatGroupDTO")
         rec = rg["workoutSteps"][1]
         assert end_condition(rec) == "distance"
         assert rec["endConditionValue"] == 200.0
 
     def test_recovery_time(self):
-        s = session_to_workout(self._session(recovery_type="time", recovery_min=90 / 60))
+        s = first(self._session(recovery_type="time", recovery_min=90 / 60))
         rg = next(st for st in s["steps"] if st.get("type") == "RepeatGroupDTO")
         rec = rg["workoutSteps"][1]
         assert end_condition(rec) == "time"
 
     def test_name_contains_reps_and_distance(self):
-        s = session_to_workout(self._session(reps=8, distance_m=400))
+        s = first(self._session(reps=8, distance_m=400))
         assert "8" in s["name"]
         assert "400" in s["name"]
 
-    def test_missing_distance_and_effort_returns_none(self):
-        assert session_to_workout({"type": "intervals", "reps": 5, "pace_range": "4:00–4:10"}) is None
+    def test_missing_distance_and_effort_returns_empty(self):
+        assert session_to_workout({"type": "intervals", "reps": 5, "pace_range": "4:00–4:10"}) == []
 
 
 # ---------------------------------------------------------------------------
@@ -344,7 +352,7 @@ class TestIntervalsWorkout:
 
 class TestAppendStrides:
     def _base_spec(self):
-        s = session_to_workout({
+        s = first({
             "type": "easy", "subtype": "jogging",
             "duration_min": 30, "pace_range": "5:40–5:50",
         })
@@ -401,7 +409,7 @@ class TestAppendStrides:
 
 class TestSessionWithStrides:
     def test_easy_with_strides_name(self):
-        s = session_to_workout({
+        s = first({
             "type": "easy", "subtype": "jogging", "duration_min": 35,
             "pace_range": "5:40–5:50",
             "strides": {"reps": 3, "distance_m": 100, "pace_note": "~3:30"},
@@ -411,7 +419,7 @@ class TestSessionWithStrides:
         assert "~3:30" in s["name"]
 
     def test_intervals_with_strides(self):
-        s = session_to_workout({
+        s = first({
             "type": "intervals", "reps": 5, "distance_m": 1000,
             "pace_range": "3:50–4:00", "recovery_min": 2,
             "strides": {"reps": 4, "distance_m": 100},
@@ -422,7 +430,7 @@ class TestSessionWithStrides:
         assert s["steps"][-1]["numberOfIterations"] == 4
 
     def test_long_run_with_strides(self):
-        s = session_to_workout({
+        s = first({
             "type": "long_run", "distance_km": 20, "pace_range": "5:10–5:20",
             "strides": {"reps": 4},
         })
@@ -441,6 +449,13 @@ class TestBuildWorkoutPayload:
         p = build_workout_payload("Test", [], 600)
         assert p["sportType"]["sportTypeKey"] == "running"
 
+    def test_strength_sport_type(self):
+        from importlib import import_module
+        sport = _mod._strength_sport()
+        p = build_workout_payload("Test", [], 600, sport)
+        assert p["sportType"]["sportTypeKey"] == "strength_training"
+        assert p["workoutSegments"][0]["sportType"]["sportTypeKey"] == "strength_training"
+
     def test_name(self):
         p = build_workout_payload("My Workout", [], 600)
         assert p["workoutName"] == "My Workout"
@@ -453,6 +468,138 @@ class TestBuildWorkoutPayload:
         p = build_workout_payload("Test", [], 600)
         assert len(p["workoutSegments"]) == 1
         assert p["workoutSegments"][0]["segmentOrder"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Strength workouts
+# ---------------------------------------------------------------------------
+
+_STRENGTH_EXERCISES = [
+    {"name": "Clamshells", "sets": 3, "reps": "15"},
+    {"name": "Wadenheben", "sets": 3, "reps": "12"},
+]
+
+
+class TestStrengthWorkout:
+    def _session(self, **kwargs):
+        base = {
+            "type": "strength",
+            "focus": "Hüftstabi",
+            "duration_min": 20,
+            "exercises": _STRENGTH_EXERCISES,
+        }
+        base.update(kwargs)
+        return base
+
+    def test_returns_one_spec(self):
+        specs = session_to_workout(self._session())
+        assert len(specs) == 1
+
+    def test_sport_is_strength_training(self):
+        s = first(self._session())
+        assert s["sport"]["sportTypeKey"] == "strength_training"
+
+    def test_name_contains_focus_and_duration(self):
+        s = first(self._session())
+        assert "Hüftstabi" in s["name"]
+        assert "20'" in s["name"]
+
+    def test_one_repeat_group_per_exercise(self):
+        s = first(self._session())
+        rgs = [st for st in s["steps"] if st.get("type") == "RepeatGroupDTO"]
+        assert len(rgs) == len(_STRENGTH_EXERCISES)
+
+    def test_repeat_group_iterations_match_sets(self):
+        s = first(self._session())
+        rgs = [st for st in s["steps"] if st.get("type") == "RepeatGroupDTO"]
+        assert rgs[0]["numberOfIterations"] == 3
+
+    def test_estimated_secs(self):
+        s = first(self._session(duration_min=25))
+        assert s["estimated_secs"] == 1500
+
+    def test_no_exercises_returns_empty(self):
+        assert session_to_workout(self._session(exercises=[])) == []
+
+    def test_optional_returns_empty(self):
+        assert session_to_workout(self._session(optional=True)) == []
+
+
+class TestRestWithStrength:
+    def _session(self, **kwargs):
+        base = {
+            "type": "rest",
+            "strength": {
+                "focus": "Rumpf",
+                "duration_min": 20,
+                "exercises": _STRENGTH_EXERCISES,
+            },
+        }
+        base.update(kwargs)
+        return base
+
+    def test_returns_one_strength_spec(self):
+        specs = session_to_workout(self._session())
+        assert len(specs) == 1
+
+    def test_spec_is_strength_training(self):
+        s = session_to_workout(self._session())[0]
+        assert s["sport"]["sportTypeKey"] == "strength_training"
+
+    def test_pure_rest_returns_empty(self):
+        assert session_to_workout({"type": "rest"}) == []
+
+
+class TestEasyWithStrength:
+    def _session(self, **kwargs):
+        base = {
+            "type": "easy",
+            "subtype": "jogging",
+            "duration_min": 40,
+            "pace_range": "6:30–7:00",
+            "strength": {
+                "focus": "Hüftstabi",
+                "duration_min": 20,
+                "exercises": _STRENGTH_EXERCISES,
+            },
+        }
+        base.update(kwargs)
+        return base
+
+    def test_returns_two_specs(self):
+        specs = session_to_workout(self._session())
+        assert len(specs) == 2
+
+    def test_first_spec_is_running(self):
+        specs = session_to_workout(self._session())
+        assert "sport" not in specs[0] or specs[0].get("sport", {}).get("sportTypeKey") == "running"
+
+    def test_second_spec_is_strength(self):
+        specs = session_to_workout(self._session())
+        assert specs[1]["sport"]["sportTypeKey"] == "strength_training"
+
+
+class TestExerciseStep:
+    def test_known_exercise_maps_category(self):
+        step = exercise_step(1, "Clamshells", 3, "15")
+        assert step["exerciseCategory"]["categoryKey"] == "HIP_STABILITY"
+
+    def test_unknown_exercise_falls_back_to_other(self):
+        step = exercise_step(1, "Unbekannte Übung", 3, "10")
+        assert step["exerciseCategory"]["categoryKey"] == "OTHER"
+
+    def test_numeric_reps_sets_end_condition_reps(self):
+        step = exercise_step(1, "Plank", 3, "30")
+        assert step["endCondition"]["conditionTypeKey"] == "reps"
+        assert step["endConditionValue"] == 30.0
+
+    def test_non_numeric_reps_sets_lap_button(self):
+        step = exercise_step(1, "Plank", 3, "30 s")
+        assert step["endCondition"]["conditionTypeKey"] == "lap.button"
+
+    def test_sets_stored(self):
+        step = exercise_step(1, "Wadenheben", 4, "12")
+        assert step["numberOfSets"] == 4
 
 
 # ---------------------------------------------------------------------------
