@@ -504,15 +504,26 @@ class TestStrengthWorkout:
         assert "Hüftstabi" in s["name"]
         assert "20'" in s["name"]
 
+    def test_warmup_is_first_step(self):
+        s = first(self._session())
+        assert s["steps"][0]["stepType"]["stepTypeKey"] == "warmup"
+
     def test_one_repeat_group_per_exercise(self):
         s = first(self._session())
         rgs = [st for st in s["steps"] if st.get("type") == "RepeatGroupDTO"]
         assert len(rgs) == len(_STRENGTH_EXERCISES)
 
+    def test_repeat_group_contains_interval_and_rest(self):
+        s = first(self._session())
+        rg = next(st for st in s["steps"] if st.get("type") == "RepeatGroupDTO")
+        keys = [step["stepType"]["stepTypeKey"] for step in rg["workoutSteps"]]
+        assert "interval" in keys
+        assert "rest" in keys
+
     def test_repeat_group_iterations_match_sets(self):
         s = first(self._session())
-        rgs = [st for st in s["steps"] if st.get("type") == "RepeatGroupDTO"]
-        assert rgs[0]["numberOfIterations"] == 3
+        rg = next(st for st in s["steps"] if st.get("type") == "RepeatGroupDTO")
+        assert rg["numberOfIterations"] == 3
 
     def test_estimated_secs(self):
         s = first(self._session(duration_min=25))
@@ -523,6 +534,10 @@ class TestStrengthWorkout:
 
     def test_optional_returns_empty(self):
         assert session_to_workout(self._session(optional=True)) == []
+
+    def test_all_unmapped_returns_empty(self):
+        s = self._session(exercises=[{"name": "Unbekanntes Ding", "sets": 3, "reps": "10"}])
+        assert session_to_workout(s) == []
 
 
 class TestRestWithStrength:
@@ -582,11 +597,10 @@ class TestEasyWithStrength:
 class TestExerciseStep:
     def test_known_exercise_maps_category(self):
         step = exercise_step(1, "Clamshells", 3, "15")
-        assert step["exerciseCategory"]["categoryKey"] == "HIP_STABILITY"
+        assert step["category"] == "HIP_STABILITY"
 
-    def test_unknown_exercise_falls_back_to_other(self):
-        step = exercise_step(1, "Unbekannte Übung", 3, "10")
-        assert step["exerciseCategory"]["categoryKey"] == "OTHER"
+    def test_unknown_exercise_returns_none(self):
+        assert exercise_step(1, "Unbekannte Übung", 3, "10") is None
 
     def test_numeric_reps_sets_end_condition_reps(self):
         step = exercise_step(1, "Plank", 3, "30")
@@ -597,9 +611,14 @@ class TestExerciseStep:
         step = exercise_step(1, "Plank", 3, "30 s")
         assert step["endCondition"]["conditionTypeKey"] == "lap.button"
 
-    def test_sets_stored(self):
+    def test_step_type_is_interval(self):
         step = exercise_step(1, "Wadenheben", 4, "12")
-        assert step["numberOfSets"] == 4
+        assert step["stepType"]["stepTypeKey"] == "interval"
+
+    def test_weight_value_present(self):
+        step = exercise_step(1, "Clamshells", 3, "15")
+        assert step["weightValue"] == -1.0
+        assert step["weightUnit"]["unitKey"] == "kilogram"
 
 
 # ---------------------------------------------------------------------------

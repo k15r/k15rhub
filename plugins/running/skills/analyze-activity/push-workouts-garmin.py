@@ -423,73 +423,129 @@ def append_strides(steps: list, strides: dict, base_order: int, estimated_secs: 
 # ---------------------------------------------------------------------------
 
 # Garmin exercise category / name mappings for common running-strength exercises.
-# Key = lowercase exercise name from YAML; value = (categoryId, categoryKey, nameId, nameKey).
-# Unmapped exercises fall back to category OTHER (0) with name OTHER (0).
-_EXERCISE_MAP: dict[str, tuple[int, str, int, str]] = {
+# Key = lowercase exercise name from YAML; value = (category_str, exercise_str).
+# Both are plain strings as Garmin stores them (not IDs).
+# Exercises NOT in this map are skipped with a warning — Garmin rejects unknown
+# category/exercise combinations and "OTHER" is not a valid value.
+_EXERCISE_MAP: dict[str, tuple[str, str]] = {
     # Hips / glutes
-    "clamshells":                     (13, "HIP_STABILITY", 0, "CLAMSHELL"),
-    "seitliches beinheben":           (13, "HIP_STABILITY", 1, "FIRE_HYDRANTS"),
-    "hüftabduktion":                  (13, "HIP_STABILITY", 2, "HIP_ABDUCTION"),
-    "hüftkreisen":                    (13, "HIP_STABILITY", 3, "HIP_CIRCLES"),
-    # Legs
-    "bulgarian split squat":          (8,  "SQUAT",         25, "SINGLE_LEG_SQUAT"),
-    "einbeinige kniebeuge":           (8,  "SQUAT",         25, "SINGLE_LEG_SQUAT"),
-    "kniebeuge":                      (8,  "SQUAT",         0,  "SQUAT"),
-    "einbeiniges kreuzheben":         (5,  "DEADLIFT",      5,  "SINGLE_LEG_DEADLIFT"),
-    "einbeinige rdl":                 (5,  "DEADLIFT",      5,  "SINGLE_LEG_DEADLIFT"),
-    "einbeiniges rdl":                (5,  "DEADLIFT",      5,  "SINGLE_LEG_DEADLIFT"),
-    "rdl":                            (5,  "DEADLIFT",      3,  "ROMANIAN_DEADLIFT"),
-    "kreuzheben":                     (5,  "DEADLIFT",      0,  "DEADLIFT"),
-    # Calves
-    "wadenheben":                     (3,  "CALF_RAISE",    0,  "CALF_RAISE"),
-    "wadenheben exzentrisch":         (3,  "CALF_RAISE",    4,  "SINGLE_LEG_CALF_RAISE"),
-    "wadenheben exz.":                (3,  "CALF_RAISE",    4,  "SINGLE_LEG_CALF_RAISE"),
-    "einbeiniges wadenheben":         (3,  "CALF_RAISE",    4,  "SINGLE_LEG_CALF_RAISE"),
+    "clamshells":                     ("HIP_STABILITY", "CLAMSHELL"),
+    "seitliches beinheben":           ("HIP_STABILITY", "FIRE_HYDRANTS"),
+    "hüftabduktion":                  ("HIP_STABILITY", "HIP_ABDUCTION"),
+    "hüftkreisen":                    ("HIP_STABILITY", "HIP_CIRCLES"),
+    "monster walks":                  ("HIP_STABILITY", "MONSTER_WALK"),
+    # Legs / squat
+    "bulgarian split squat":          ("SQUAT", "SINGLE_LEG_SQUAT"),
+    "einbeinige kniebeuge":           ("SQUAT", "SINGLE_LEG_SQUAT"),
+    "kniebeuge":                      ("SQUAT", "SQUAT"),
+    # Deadlift / hinge
+    "einbeiniges kreuzheben":         ("DEADLIFT", "SINGLE_LEG_DEADLIFT"),
+    "einbeinige rdl":                 ("DEADLIFT", "SINGLE_LEG_DEADLIFT"),
+    "einbeiniges rdl":                ("DEADLIFT", "SINGLE_LEG_DEADLIFT"),
+    "rdl":                            ("DEADLIFT", "ROMANIAN_DEADLIFT"),
+    "kreuzheben":                     ("DEADLIFT", "DEADLIFT"),
+    # Calves / shin
+    "wadenheben":                     ("CALF_RAISE", "CALF_RAISE"),
+    "wadenheben exzentrisch":         ("CALF_RAISE", "SINGLE_LEG_CALF_RAISE"),
+    "wadenheben exz.":                ("CALF_RAISE", "SINGLE_LEG_CALF_RAISE"),
+    "einbeiniges wadenheben":         ("CALF_RAISE", "SINGLE_LEG_CALF_RAISE"),
+    "tibialis anterior heben":        ("CALF_RAISE", "TIBIALIS_RAISE"),
+    "tibialis heben":                 ("CALF_RAISE", "TIBIALIS_RAISE"),
     # Core
-    "plank":                          (14, "PLANK",         0,  "PLANK"),
-    "seitstütz":                      (14, "PLANK",         5,  "SIDE_PLANK"),
-    "seitstütz links":                (14, "PLANK",         5,  "SIDE_PLANK"),
-    "seitstütz rechts":               (14, "PLANK",         5,  "SIDE_PLANK"),
-    "crunch":                         (0,  "CORE",          2,  "CRUNCH"),
-    "dead bug":                       (0,  "CORE",          7,  "DEAD_BUG"),
-    "bird dog":                       (0,  "CORE",          4,  "BIRD_DOG"),
-    "brücke":                         (0,  "CORE",          5,  "BRIDGE"),
-    "einbeinige brücke":              (0,  "CORE",          6,  "SINGLE_LEG_BRIDGE"),
-    # Tibialis / shin
-    "tibialis anterior heben":        (3,  "CALF_RAISE",    6,  "TIBIALIS_RAISE"),
-    "tibialis heben":                 (3,  "CALF_RAISE",    6,  "TIBIALIS_RAISE"),
-    # Upper body (supporting)
-    "liegestütz":                     (11, "PUSH_UP",       0,  "PUSH_UP"),
-    "row":                            (9,  "ROW",           0,  "BENT_OVER_ROW"),
+    "plank":                          ("PLANK", "PLANK"),
+    "seitstütz":                      ("PLANK", "SIDE_PLANK"),
+    "seitstütz links":                ("PLANK", "SIDE_PLANK"),
+    "seitstütz rechts":               ("PLANK", "SIDE_PLANK"),
+    "dead bug":                       ("PLANK", "DEAD_BUG"),
+    "deadbugs":                       ("PLANK", "DEAD_BUG"),
+    "hollow holds":                   ("PLANK", "HOLLOW_HOLD"),
+    "hollow hold":                    ("PLANK", "HOLLOW_HOLD"),
+    "bird dog":                       ("PLANK", "BIRD_DOG"),
+    "brücke":                         ("GLUTE_BRIDGE", "GLUTE_BRIDGE"),
+    "einbeinige brücke":              ("GLUTE_BRIDGE", "SINGLE_LEG_GLUTE_BRIDGE"),
+    "crunch":                         ("CRUNCH", "CRUNCH"),
+    # Lunge
+    "ausfallschritt":                 ("LUNGE", "LUNGE"),
+    "curtsy lunge":                   ("LUNGE", "CURTSY_LUNGE"),
+    # Upper body
+    "liegestütz":                     ("PUSH_UP", "PUSH_UP"),
+    "row":                            ("ROW", "BENT_OVER_ROW"),
     # Jumps / plyometrics
-    "pogos":                          (15, "PLYOMETRIC",    4,  "JUMP_ROPE_SINGLE_UNS"),
-    "einbeinige hüpfer":              (15, "PLYOMETRIC",    0,  "BOX_JUMP"),
-    "sprünge":                        (15, "PLYOMETRIC",    0,  "BOX_JUMP"),
+    "pogos":                          ("PLYOMETRIC", "JUMP_ROPE_SINGLE_UNS"),
+    "einbeinige hüpfer":              ("PLYOMETRIC", "BOX_JUMP"),
+    "sprünge":                        ("PLYOMETRIC", "BOX_JUMP"),
+    # Ankle / mobility — map to closest Garmin category
+    "sprunggelenk-cars":              ("CALF_RAISE", "ANKLE_CIRCLES"),
+    "sprunggelenk cars":              ("CALF_RAISE", "ANKLE_CIRCLES"),
+    # Walking drills — no perfect Garmin equivalent; use CARDIO/WALK
+    "fersengehen":                    ("CARDIO", "WALK"),
+    "gehen auf fußkanten":            ("CARDIO", "WALK"),
 }
 
+_WEIGHT_UNIT = {"unitId": 8, "unitKey": "kilogram", "factor": 1000.0}
+_STROKE_TYPE = {"strokeTypeId": 0, "strokeTypeKey": None, "displayOrder": 0}
+_EQUIP_TYPE  = {"equipmentTypeId": 0, "equipmentTypeKey": None, "displayOrder": 0}
 
-def _exercise_ids(name: str) -> tuple[int, str, int, str]:
-    return _EXERCISE_MAP.get(name.lower().strip(), (0, "OTHER", 0, "OTHER"))
+
+def _exercise_ids(name: str) -> tuple[str, str] | None:
+    """Return (category, exerciseName) strings, or None if unmapped."""
+    return _EXERCISE_MAP.get(name.lower().strip())
 
 
-def exercise_step(order: int, name: str, sets: int, reps: str) -> dict:
-    cat_id, cat_key, ex_id, ex_key = _exercise_ids(name)
+def _strength_rest_step(order: int, child_step_id: int) -> dict:
     return {
         "type": "ExecutableStepDTO",
         "stepOrder": order,
-        "stepType": {"stepTypeId": 8, "stepTypeKey": "main", "displayOrder": 8},
+        "stepType": {"stepTypeId": 5, "stepTypeKey": "rest", "displayOrder": 5},
+        "childStepId": child_step_id,
         "endCondition": {
-            "conditionTypeId": 3 if str(reps).isdigit() else 1,
-            "conditionTypeKey": "reps" if str(reps).isdigit() else "lap.button",
-            "displayOrder": 3 if str(reps).isdigit() else 1,
+            "conditionTypeId": 1, "conditionTypeKey": "lap.button",
+            "displayOrder": 1, "displayable": True,
+        },
+        "endConditionValue": 0.0,
+        "targetType": no_target()["targetType"],
+        "targetValueOne": None,
+        "targetValueTwo": None,
+        "strokeType": _STROKE_TYPE,
+        "equipmentType": _EQUIP_TYPE,
+        "category": None,
+        "exerciseName": None,
+        "weightValue": -1.0,
+        "weightUnit": _WEIGHT_UNIT,
+    }
+
+
+def exercise_step(order: int, name: str, sets: int, reps: str,
+                  child_step_id: int = 1) -> dict | None:
+    """Build a single strength interval step. Returns None if exercise is unmapped."""
+    mapping = _exercise_ids(name)
+    if mapping is None:
+        print(f"  WARN: unmapped exercise {name!r} — skipped", file=sys.stderr)
+        return None
+    category, exercise_name = mapping
+    reps_str = str(reps).strip()
+    is_numeric = reps_str.isdigit()
+    return {
+        "type": "ExecutableStepDTO",
+        "stepOrder": order,
+        "stepType": {"stepTypeId": 3, "stepTypeKey": "interval", "displayOrder": 3},
+        "childStepId": child_step_id,
+        "endCondition": {
+            "conditionTypeId": 10 if is_numeric else 1,
+            "conditionTypeKey": "reps" if is_numeric else "lap.button",
+            "displayOrder": 10 if is_numeric else 1,
             "displayable": True,
         },
-        "endConditionValue": float(reps) if str(reps).isdigit() else None,
+        "endConditionValue": float(reps_str) if is_numeric else 0.0,
         "targetType": no_target()["targetType"],
-        "exerciseCategory": {"categoryId": cat_id, "categoryKey": cat_key},
-        "exerciseName": {"exerciseId": ex_id, "exerciseKey": ex_key},
-        "numberOfSets": sets,
-        "description": name,
+        "targetValueOne": None,
+        "targetValueTwo": None,
+        "strokeType": _STROKE_TYPE,
+        "equipmentType": _EQUIP_TYPE,
+        "category": category,
+        "exerciseName": exercise_name,
+        "weightValue": -1.0,
+        "weightUnit": _WEIGHT_UNIT,
     }
 
 
@@ -509,13 +565,64 @@ def _strength_workout(s: dict) -> dict | None:
         return None
 
     name = f"Kraft {focus} {int(duration_min)}'"
-    steps = []
-    for i, ex in enumerate(exercises, start=1):
+
+    # Warmup: lap-button, no exercise
+    warmup = {
+        "type": "ExecutableStepDTO",
+        "stepOrder": 1,
+        "stepType": {"stepTypeId": 1, "stepTypeKey": "warmup", "displayOrder": 1},
+        "childStepId": None,
+        "endCondition": {
+            "conditionTypeId": 1, "conditionTypeKey": "lap.button",
+            "displayOrder": 1, "displayable": True,
+        },
+        "endConditionValue": 0.0,
+        "targetType": no_target()["targetType"],
+        "targetValueOne": None,
+        "targetValueTwo": 0.0,
+        "strokeType": _STROKE_TYPE,
+        "equipmentType": _EQUIP_TYPE,
+        "category": "CARDIO",
+        "exerciseName": "",
+        "weightValue": -1.0,
+        "weightUnit": _WEIGHT_UNIT,
+    }
+
+    steps = [warmup]
+    step_order = 2
+    for ex in exercises:
         ex_name = ex.get("name", "")
         sets = int(ex.get("sets", 3))
         reps = str(ex.get("reps", "10"))
-        repeat_steps = [exercise_step(1, ex_name, sets, reps)]
-        steps.append(repeat_group(i, sets, repeat_steps))
+
+        ex_step = exercise_step(step_order + 1, ex_name, sets, reps, child_step_id=1)
+        if ex_step is None:
+            continue  # unmapped — already warned
+
+        rest_step = _strength_rest_step(step_order + 2, child_step_id=1)
+
+        rg = {
+            "type": "RepeatGroupDTO",
+            "stepOrder": step_order,
+            "stepType": {"stepTypeId": 6, "stepTypeKey": "repeat", "displayOrder": 6},
+            "childStepId": 1,
+            "numberOfIterations": sets,
+            "workoutSteps": [ex_step, rest_step],
+            "endCondition": {
+                "conditionTypeId": 7, "conditionTypeKey": "iterations",
+                "displayOrder": 7, "displayable": False,
+            },
+            "endConditionValue": float(sets),
+            "skipLastRestStep": False,
+            "smartRepeat": False,
+        }
+        steps.append(rg)
+        step_order += 1
+
+    if len(steps) == 1:
+        # only the warmup — all exercises were unmapped
+        print("  SKIP strength: all exercises unmapped", file=sys.stderr)
+        return None
 
     return {
         "name": name,
