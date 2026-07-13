@@ -569,6 +569,7 @@ def exercise_step(order: int, name: str, sets: int, reps: str,
         "equipmentType": _EQUIP_TYPE,
         "category": category,
         "exerciseName": exercise_name,
+        "description": name,
         "weightValue": -1.0,
         "weightUnit": _WEIGHT_UNIT,
     }
