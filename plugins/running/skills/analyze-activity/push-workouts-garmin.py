@@ -38,6 +38,22 @@ from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
+# Garmin exercise catalogue (loaded from sibling garmin_exercises.json)
+# ---------------------------------------------------------------------------
+
+def _load_exercise_catalogue() -> dict[str, set[str]]:
+    """Return {CATEGORY: {exercise_name, ...}} from the bundled FIT SDK catalogue."""
+    catalogue_path = Path(__file__).parent / "garmin_exercises.json"
+    if not catalogue_path.exists():
+        return {}
+    with open(catalogue_path) as f:
+        raw = json.load(f)
+    return {cat.upper(): {ex.upper() for ex in names} for cat, names in raw.items()}
+
+_CATALOGUE = _load_exercise_catalogue()
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -424,63 +440,72 @@ def append_strides(steps: list, strides: dict, base_order: int, estimated_secs: 
 
 # Garmin exercise category / name mappings for common running-strength exercises.
 # Key = lowercase exercise name from YAML; value = (category_str, exercise_str).
-# Both are plain strings as Garmin stores them (not IDs).
-# Exercises NOT in this map are skipped with a warning — Garmin rejects unknown
-# category/exercise combinations and "OTHER" is not a valid value.
+# Both must be valid FIT SDK keys — see garmin_exercises.json for the full catalogue.
+# Exercises NOT in this map are skipped with a warning — Garmin rejects unknown values.
 _EXERCISE_MAP: dict[str, tuple[str, str]] = {
     # Hips / glutes
-    "clamshells":                     ("HIP_STABILITY", "CLAMSHELL"),
-    "seitliches beinheben":           ("HIP_STABILITY", "FIRE_HYDRANTS"),
-    "hüftabduktion":                  ("HIP_STABILITY", "HIP_ABDUCTION"),
+    "clamshells":                     ("BANDED_EXERCISES", "CLAM_SHELLS"),
+    "seitliches beinheben":           ("HIP_STABILITY", "SIDE_LYING_LEG_RAISE"),
+    "hüftabduktion":                  ("HIP_STABILITY", "STANDING_HIP_ABDUCTION"),
     "hüftkreisen":                    ("HIP_STABILITY", "HIP_CIRCLES"),
-    "monster walks":                  ("HIP_STABILITY", "MONSTER_WALK"),
+    "monster walks":                  ("HIP_STABILITY", "LATERAL_WALKS_WITH_BAND_AT_ANKLES"),
     # Legs / squat
-    "bulgarian split squat":          ("SQUAT", "SINGLE_LEG_SQUAT"),
-    "einbeinige kniebeuge":           ("SQUAT", "SINGLE_LEG_SQUAT"),
-    "kniebeuge":                      ("SQUAT", "SQUAT"),
+    "bulgarian split squat":          ("SQUAT", "PISTOL_SQUAT"),
+    "einbeinige kniebeuge":           ("SQUAT", "PISTOL_SQUAT"),
+    "kniebeuge":                      ("SQUAT", "BACK_SQUATS"),
     # Deadlift / hinge
-    "einbeiniges kreuzheben":         ("DEADLIFT", "SINGLE_LEG_DEADLIFT"),
-    "einbeinige rdl":                 ("DEADLIFT", "SINGLE_LEG_DEADLIFT"),
-    "einbeiniges rdl":                ("DEADLIFT", "SINGLE_LEG_DEADLIFT"),
+    "einbeiniges kreuzheben":         ("DEADLIFT", "SINGLE_LEG_BARBELL_DEADLIFT"),
+    "einbeinige rdl":                 ("DEADLIFT", "SINGLE_LEG_BARBELL_DEADLIFT"),
+    "einbeiniges rdl":                ("DEADLIFT", "SINGLE_LEG_BARBELL_DEADLIFT"),
     "rdl":                            ("DEADLIFT", "ROMANIAN_DEADLIFT"),
-    "kreuzheben":                     ("DEADLIFT", "DEADLIFT"),
+    "kreuzheben":                     ("DEADLIFT", "BARBELL_DEADLIFT"),
     # Calves / shin
-    "wadenheben":                     ("CALF_RAISE", "CALF_RAISE"),
-    "wadenheben exzentrisch":         ("CALF_RAISE", "SINGLE_LEG_CALF_RAISE"),
-    "wadenheben exz.":                ("CALF_RAISE", "SINGLE_LEG_CALF_RAISE"),
-    "einbeiniges wadenheben":         ("CALF_RAISE", "SINGLE_LEG_CALF_RAISE"),
-    "tibialis anterior heben":        ("CALF_RAISE", "TIBIALIS_RAISE"),
-    "tibialis heben":                 ("CALF_RAISE", "TIBIALIS_RAISE"),
-    # Core
+    "wadenheben":                     ("CALF_RAISE", "STANDING_CALF_RAISE"),
+    "wadenheben exzentrisch":         ("CALF_RAISE", "SINGLE_LEG_STANDING_CALF_RAISE"),
+    "wadenheben exz.":                ("CALF_RAISE", "SINGLE_LEG_STANDING_CALF_RAISE"),
+    "einbeiniges wadenheben":         ("CALF_RAISE", "SINGLE_LEG_STANDING_CALF_RAISE"),
+    "tibialis anterior heben":        ("WARM_UP", "WALKOUT"),
+    "tibialis heben":                 ("WARM_UP", "WALKOUT"),
+    # Core / plank
     "plank":                          ("PLANK", "PLANK"),
-    "seitstütz":                      ("PLANK", "SIDE_PLANK"),
-    "seitstütz links":                ("PLANK", "SIDE_PLANK"),
-    "seitstütz rechts":               ("PLANK", "SIDE_PLANK"),
-    "dead bug":                       ("PLANK", "DEAD_BUG"),
-    "deadbugs":                       ("PLANK", "DEAD_BUG"),
-    "hollow holds":                   ("PLANK", "HOLLOW_HOLD"),
-    "hollow hold":                    ("PLANK", "HOLLOW_HOLD"),
-    "bird dog":                       ("PLANK", "BIRD_DOG"),
-    "brücke":                         ("GLUTE_BRIDGE", "GLUTE_BRIDGE"),
-    "einbeinige brücke":              ("GLUTE_BRIDGE", "SINGLE_LEG_GLUTE_BRIDGE"),
+    "seitstütz":                     ("PLANK", "SIDE_PLANK"),
+    "seitstütz links":               ("PLANK", "SIDE_PLANK"),
+    "seitstütz rechts":              ("PLANK", "SIDE_PLANK"),
+    "dead bug":                       ("HIP_STABILITY", "DEAD_BUG"),
+    "deadbugs":                       ("HIP_STABILITY", "DEAD_BUG"),
+    "hollow holds":                   ("HYPEREXTENSION", "HOLLOW_HOLD_AND_ROLL"),
+    "hollow hold":                    ("HYPEREXTENSION", "HOLLOW_HOLD_AND_ROLL"),
+    "bird dog":                       ("HIP_STABILITY", "QUADRUPED"),
+    # Hip raise / glute bridge
+    "brücke":                        ("HIP_RAISE", "HIP_RAISE"),
+    "einbeinige brücke":             ("HIP_RAISE", "SINGLE_LEG_HIP_RAISE"),
+    # Crunch / sit-up
     "crunch":                         ("CRUNCH", "CRUNCH"),
     # Lunge
     "ausfallschritt":                 ("LUNGE", "LUNGE"),
     "curtsy lunge":                   ("LUNGE", "CURTSY_LUNGE"),
     # Upper body
-    "liegestütz":                     ("PUSH_UP", "PUSH_UP"),
-    "row":                            ("ROW", "BENT_OVER_ROW"),
+    "liegestütz":                    ("PUSH_UP", "PUSH_UP"),
+    "row":                            ("ROW", "BENT_OVER_ROW_WITH_BARBELL"),
     # Jumps / plyometrics
-    "pogos":                          ("PLYOMETRIC", "JUMP_ROPE_SINGLE_UNS"),
-    "einbeinige hüpfer":              ("PLYOMETRIC", "BOX_JUMP"),
-    "sprünge":                        ("PLYOMETRIC", "BOX_JUMP"),
-    # Ankle / mobility — map to closest Garmin category
-    "sprunggelenk-cars":              ("CALF_RAISE", "ANKLE_CIRCLES"),
-    "sprunggelenk cars":              ("CALF_RAISE", "ANKLE_CIRCLES"),
-    # Walking drills — no perfect Garmin equivalent; use CARDIO/WALK
-    "fersengehen":                    ("CARDIO", "WALK"),
-    "gehen auf fußkanten":            ("CARDIO", "WALK"),
+    "pogos":                          ("PLYO", "BOX_JUMP"),
+    "einbeinige hüpfer":             ("PLYO", "BOX_JUMP"),
+    "sprünge":                       ("PLYO", "BOX_JUMP"),
+    # Ankle / mobility
+    "sprunggelenk-cars":              ("WARM_UP", "WALKING_HIGH_KNEES"),
+    "sprunggelenk cars":              ("WARM_UP", "WALKING_HIGH_KNEES"),
+    # Walking drills
+    "fersengehen":                    ("RUN", "WALK"),
+    "gehen auf fußkanten":           ("RUN", "WALK"),
 }
+
+# Validate map against catalogue at module load (warns on bad entries, doesn't crash)
+if _CATALOGUE:
+    for _german, (_cat, _ex) in _EXERCISE_MAP.items():
+        if _cat not in _CATALOGUE:
+            print(f"WARN exercise map: unknown category {_cat!r} for {_german!r}", file=sys.stderr)
+        elif _ex not in _CATALOGUE[_cat]:
+            print(f"WARN exercise map: {_ex!r} not in category {_cat!r} for {_german!r}", file=sys.stderr)
 
 _WEIGHT_UNIT = {"unitId": 8, "unitKey": "kilogram", "factor": 1000.0}
 _STROKE_TYPE = {"strokeTypeId": 0, "strokeTypeKey": None, "displayOrder": 0}

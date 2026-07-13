@@ -597,7 +597,7 @@ class TestEasyWithStrength:
 class TestExerciseStep:
     def test_known_exercise_maps_category(self):
         step = exercise_step(1, "Clamshells", 3, "15")
-        assert step["category"] == "HIP_STABILITY"
+        assert step["category"] == "BANDED_EXERCISES"
 
     def test_unknown_exercise_returns_none(self):
         assert exercise_step(1, "Unbekannte Übung", 3, "10") is None
