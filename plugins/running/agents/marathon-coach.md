@@ -459,6 +459,7 @@ strength:
     - name: "<exercise name — must match an Übungen/ file>"
       sets: 3
       reps: "15"        # use a string for ranges or time: "12–15", "30 s", "10/Seite"
+      notes: "<optional coaching cue shown on the watch, e.g. 'langsam und kontrolliert'>"
     - name: "<exercise name>"
       sets: 2
       reps: "12/Seite"

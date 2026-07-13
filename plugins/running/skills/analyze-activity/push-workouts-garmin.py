@@ -541,7 +541,7 @@ def _strength_rest_step(order: int, child_step_id: int) -> dict:
 
 
 def exercise_step(order: int, name: str, sets: int, reps: str,
-                  child_step_id: int = 1) -> dict | None:
+                  child_step_id: int = 1, notes: str = "") -> dict | None:
     """Build a single strength interval step. Returns None if exercise is unmapped."""
     mapping = _exercise_ids(name)
     if mapping is None:
@@ -550,6 +550,10 @@ def exercise_step(order: int, name: str, sets: int, reps: str,
     category, exercise_name = mapping
     reps_str = str(reps).strip()
     is_numeric = reps_str.isdigit()
+    parts = [name, reps_str]
+    if notes:
+        parts.append(notes)
+    description = " | ".join(parts)
     return {
         "type": "ExecutableStepDTO",
         "stepOrder": order,
@@ -569,7 +573,7 @@ def exercise_step(order: int, name: str, sets: int, reps: str,
         "equipmentType": _EQUIP_TYPE,
         "category": category,
         "exerciseName": exercise_name,
-        "description": name,
+        "description": description,
         "weightValue": -1.0,
         "weightUnit": _WEIGHT_UNIT,
     }
@@ -620,8 +624,9 @@ def _strength_workout(s: dict) -> dict | None:
         ex_name = ex.get("name", "")
         sets = int(ex.get("sets", 3))
         reps = str(ex.get("reps", "10"))
+        notes = str(ex.get("notes", ""))
 
-        ex_step = exercise_step(step_order + 1, ex_name, sets, reps, child_step_id=1)
+        ex_step = exercise_step(step_order + 1, ex_name, sets, reps, child_step_id=1, notes=notes)
         if ex_step is None:
             continue  # unmapped — already warned
 
