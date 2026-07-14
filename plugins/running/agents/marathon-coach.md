@@ -513,18 +513,91 @@ Any session type (including `rest`) accepts an optional `strength` block for str
 strength:
   duration_min: 20
   focus: "<concise label, e.g. Hüftstabi, Rumpf, Athletik>"
-  exercises:
-    - garmin_category: "<FIT SDK category key, e.g. HIP_STABILITY>"
-      garmin_exercise: "<FIT SDK exercise key, e.g. DEAD_BUG>"
-      name: "<human-readable display name shown on watch>"
-      sets: 3
-      reps: "15"        # use a string for ranges or time: "12–15", "30 s", "10/Seite"
+  steps:
+    - exercise: true
+      garmin_category: "HIP_STABILITY"
+      garmin_exercise: "DEAD_BUG"
+      name: "Deadbugs"
+      reps: "10/Seite"
       notes: "<optional coaching cue shown on the watch>"
-    - garmin_category: "CALF_RAISE"
-      garmin_exercise: "SINGLE_LEG_STANDING_CALF_RAISE"
-      name: "Einbeiniges Wadenheben"
-      sets: 2
-      reps: "12/Seite"
+    - pause: lap          # lap-button rest (athlete decides when ready)
+    - group:
+        rounds: 3
+        rest: "60"        # timed rest between rounds in seconds; omit or "lap" for lap-button
+        steps:
+          - exercise: true
+            garmin_category: "PUSH_UP"
+            garmin_exercise: "push_up"
+            name: "Liegestütz"
+            reps: "12"
+          - pause: lap
+          - exercise: true
+            garmin_category: "PLANK"
+            garmin_exercise: "plank"
+            name: "Plank"
+            reps: "30 s"
+```
+
+**Step types:**
+
+| Key | What it produces | Required fields |
+| --- | --- | --- |
+| `exercise: true` | Single exercise step (interval) | `garmin_category`, `garmin_exercise`, `reps`; optional `name`, `notes` |
+| `pause: <value>` | Rest step | Value: `"lap"` for lap-button, or seconds as string `"30"` / `"30s"` |
+| `group:` | Repeat group (circuit or straight set) | `rounds`, `steps`; optional `rest` (between-round rest, same format as pause) |
+
+**Circuit vs straight set:**
+
+- **Circuit** (all exercises in one round, repeat N times): put all exercises inside one `group`. Add `pause: lap` between exercises, and `rest: "60"` (or similar) between rounds.
+- **Straight set** (all sets of one exercise, then move on): wrap each exercise in its own `group` with the desired `rounds`.
+- **Mixed**: use multiple top-level items — some single exercises, some groups.
+
+**Examples:**
+
+Straight sets (3×15 Clamshells, then 3×12 Wadenheben):
+
+```yaml
+steps:
+  - group:
+      rounds: 3
+      rest: lap
+      steps:
+        - exercise: true
+          garmin_category: BANDED_EXERCISES
+          garmin_exercise: clam_shells
+          name: Clamshells
+          reps: "15"
+  - group:
+      rounds: 3
+      rest: lap
+      steps:
+        - exercise: true
+          garmin_category: CALF_RAISE
+          garmin_exercise: standing_calf_raise
+          name: Wadenheben
+          reps: "12"
+```
+
+Circuit (3 rounds of: Liegestütz → pause → Plank → pause, then 60 s rest between rounds):
+
+```yaml
+steps:
+  - group:
+      rounds: 3
+      rest: "60"
+      steps:
+        - exercise: true
+          garmin_category: PUSH_UP
+          garmin_exercise: push_up
+          name: Liegestütz
+          reps: "12"
+        - pause: lap
+        - exercise: true
+          garmin_category: PLANK
+          garmin_exercise: plank
+          name: Plank
+          reps: "30 s"
+        - pause: lap
 ```
 
 Omit `strength` when no strength work is planned for that day.

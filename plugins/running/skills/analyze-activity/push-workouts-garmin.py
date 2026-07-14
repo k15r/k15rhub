@@ -501,17 +501,21 @@ _STROKE_TYPE = {"strokeTypeId": 0, "strokeTypeKey": None, "displayOrder": 0}
 _EQUIP_TYPE  = {"equipmentTypeId": 0, "equipmentTypeKey": None, "displayOrder": 0}
 
 
-def _strength_rest_step(order: int, child_step_id: int) -> dict:
+def _strength_rest_step(order: int, child_step_id: int, duration_secs: float | None = None) -> dict:
+    """Rest step. duration_secs=None → lap-button; otherwise timed."""
+    timed = duration_secs is not None
     return {
         "type": "ExecutableStepDTO",
         "stepOrder": order,
         "stepType": {"stepTypeId": 5, "stepTypeKey": "rest", "displayOrder": 5},
         "childStepId": child_step_id,
         "endCondition": {
-            "conditionTypeId": 1, "conditionTypeKey": "lap.button",
-            "displayOrder": 1, "displayable": True,
+            "conditionTypeId": 2 if timed else 1,
+            "conditionTypeKey": "time" if timed else "lap.button",
+            "displayOrder": 2 if timed else 1,
+            "displayable": True,
         },
-        "endConditionValue": 0.0,
+        "endConditionValue": float(duration_secs) if timed else 0.0,
         "targetType": no_target()["targetType"],
         "targetValueOne": None,
         "targetValueTwo": None,
@@ -532,7 +536,6 @@ def exercise_step(order: int, ex: dict, child_step_id: int = 1) -> dict | None:
     Returns None if the exercise cannot be resolved.
     """
     name = ex.get("name", "")
-    sets = int(ex.get("sets", 3))
     reps = str(ex.get("reps", "10"))
     notes = str(ex.get("notes", ""))
 
@@ -592,24 +595,133 @@ def exercise_step(order: int, ex: dict, child_step_id: int = 1) -> dict | None:
     }
 
 
+def _parse_pause_secs(pause_val) -> float | None:
+    """Parse a pause value to seconds. 'lap' or None → None (lap-button).
+    '10s', '10', 10 → float seconds.
+    """
+    if pause_val is None:
+        return None
+    s = str(pause_val).strip().lower()
+    if s in ("lap", "lap_button", ""):
+        return None
+    s = s.rstrip("s").strip()
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _build_strength_steps(items: list, base_order: int,
+                           child_step_id: int = 0) -> tuple[list, int]:
+    """Recursively build Garmin step list from the new strength schema.
+
+    Each item in `items` is one of:
+      - {exercise: ..., garmin_category: ..., garmin_exercise: ..., reps: ..., notes: ...}
+      - {pause: <duration|"lap">}
+      - {group: {rounds: N, rest: <duration|"lap">, steps: [...]}}
+
+    Returns (steps, next_order).
+    child_step_id: the childStepId to stamp on steps inside a repeat group (0 at top level).
+    """
+    steps = []
+    order = base_order
+
+    for item in items:
+        if "exercise" in item:
+            # Treat the item itself as the exercise dict (garmin_category etc. at same level)
+            step = exercise_step(order, item, child_step_id=child_step_id)
+            if step:
+                steps.append(step)
+                order += 1
+
+        elif "pause" in item:
+            secs = _parse_pause_secs(item["pause"])
+            steps.append(_strength_rest_step(order, child_step_id=child_step_id,
+                                             duration_secs=secs))
+            order += 1
+
+        elif "group" in item:
+            g = item["group"]
+            rounds = int(g.get("rounds", 3))
+            rest_val = g.get("rest")  # rest between rounds
+            inner_items = g.get("steps", [])
+
+            # Build inner steps with child_step_id=1
+            inner_steps, _ = _build_strength_steps(inner_items, base_order=1, child_step_id=1)
+
+            # Only add between-rounds rest when there are actual exercise/pause steps
+            if inner_steps and rest_val is not None:
+                secs = _parse_pause_secs(rest_val)
+                inner_steps.append(_strength_rest_step(len(inner_steps) + 1,
+                                                       child_step_id=1,
+                                                       duration_secs=secs))
+
+            if not inner_steps:
+                print("  WARN: group has no resolvable steps — skipped", file=sys.stderr)
+                continue
+
+            rg = {
+                "type": "RepeatGroupDTO",
+                "stepOrder": order,
+                "stepType": {"stepTypeId": 6, "stepTypeKey": "repeat", "displayOrder": 6},
+                "childStepId": child_step_id if child_step_id else 1,
+                "numberOfIterations": rounds,
+                "workoutSteps": inner_steps,
+                "endCondition": {
+                    "conditionTypeId": 7, "conditionTypeKey": "iterations",
+                    "displayOrder": 7, "displayable": False,
+                },
+                "endConditionValue": float(rounds),
+                "skipLastRestStep": False,
+                "smartRepeat": False,
+            }
+            steps.append(rg)
+            order += 1
+
+        else:
+            print(f"  WARN: unknown strength item {list(item.keys())} — skipped", file=sys.stderr)
+
+    return steps, order
+
+
 def _strength_workout(s: dict) -> dict | None:
     """Build a strength_training Garmin workout from a strength block dict.
 
     s is either a full session (type=strength) or the value of session['strength'].
-    Expected keys: focus, duration_min, exercises (list of {name, sets, reps}).
+
+    New schema: strength block has a top-level `steps` list of exercise/pause/group items.
+    Legacy schema: flat `exercises` list — warns and falls back to old straight-set behaviour.
     """
     block = s.get("strength", s) if s.get("type") == "strength" else s
     focus = block.get("focus", "Kraft/Stabi")
     duration_min = block.get("duration_min", 20)
-    exercises = block.get("exercises", [])
 
-    if not exercises:
-        print("  SKIP strength: no exercises defined", file=sys.stderr)
+    # Detect schema version
+    new_steps = block.get("steps")
+    legacy_exercises = block.get("exercises")
+
+    if new_steps is None and legacy_exercises is None:
+        print("  SKIP strength: no steps or exercises defined", file=sys.stderr)
         return None
 
-    name = f"Kraft {focus} {int(duration_min)}'"
+    if new_steps is None and legacy_exercises is not None:
+        # Legacy flat exercises list — convert to new format with straight sets
+        print("  DEPRECATION: strength block uses legacy 'exercises' list — migrate to 'steps'",
+              file=sys.stderr)
+        new_steps = []
+        for ex in legacy_exercises:
+            sets = int(ex.get("sets", 3))
+            new_steps.append({
+                "group": {
+                    "rounds": sets,
+                    "rest": "lap",
+                    "steps": [{"exercise": True, **ex}],
+                }
+            })
 
-    # Warmup: lap-button, no exercise
+    workout_name = f"Kraft {focus} {int(duration_min)}'"
+
+    # Warmup: lap-button
     warmup = {
         "type": "ExecutableStepDTO",
         "stepOrder": 1,
@@ -631,43 +743,15 @@ def _strength_workout(s: dict) -> dict | None:
         "weightUnit": _WEIGHT_UNIT,
     }
 
-    steps = [warmup]
-    step_order = 2
-    for ex in exercises:
-        sets = int(ex.get("sets", 3))
+    body_steps, _ = _build_strength_steps(new_steps, base_order=2)
 
-        ex_step = exercise_step(step_order + 1, ex, child_step_id=1)
-        if ex_step is None:
-            continue  # unresolvable — already warned
-
-        rest_step = _strength_rest_step(step_order + 2, child_step_id=1)
-
-        rg = {
-            "type": "RepeatGroupDTO",
-            "stepOrder": step_order,
-            "stepType": {"stepTypeId": 6, "stepTypeKey": "repeat", "displayOrder": 6},
-            "childStepId": 1,
-            "numberOfIterations": sets,
-            "workoutSteps": [ex_step, rest_step],
-            "endCondition": {
-                "conditionTypeId": 7, "conditionTypeKey": "iterations",
-                "displayOrder": 7, "displayable": False,
-            },
-            "endConditionValue": float(sets),
-            "skipLastRestStep": False,
-            "smartRepeat": False,
-        }
-        steps.append(rg)
-        step_order += 1
-
-    if len(steps) == 1:
-        # only the warmup — all exercises were unmapped
-        print("  SKIP strength: all exercises unmapped", file=sys.stderr)
+    if not body_steps:
+        print("  SKIP strength: all steps unresolvable", file=sys.stderr)
         return None
 
     return {
-        "name": name,
-        "steps": steps,
+        "name": workout_name,
+        "steps": [warmup] + body_steps,
         "estimated_secs": int(float(duration_min) * 60),
         "sport": _strength_sport(),
     }

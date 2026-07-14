@@ -47,6 +47,7 @@ append_strides      = _mod.append_strides
 session_to_workout  = _mod.session_to_workout
 build_workout_payload = _mod.build_workout_payload
 exercise_step       = _mod.exercise_step
+_build_strength_steps = _mod._build_strength_steps
 
 
 # ---------------------------------------------------------------------------
@@ -474,11 +475,31 @@ class TestBuildWorkoutPayload:
 # Strength workouts
 # ---------------------------------------------------------------------------
 
+_EX_CLAM = {"exercise": True, "garmin_category": "BANDED_EXERCISES",
+             "garmin_exercise": "CLAM_SHELLS", "name": "Clamshells", "reps": "15"}
+_EX_WADE = {"exercise": True, "garmin_category": "CALF_RAISE",
+             "garmin_exercise": "STANDING_CALF_RAISE", "name": "Wadenheben", "reps": "12"}
+
+# Legacy flat exercises list (still accepted with deprecation warning)
 _STRENGTH_EXERCISES = [
     {"garmin_category": "BANDED_EXERCISES", "garmin_exercise": "CLAM_SHELLS",
      "name": "Clamshells", "sets": 3, "reps": "15"},
     {"garmin_category": "CALF_RAISE", "garmin_exercise": "STANDING_CALF_RAISE",
      "name": "Wadenheben", "sets": 3, "reps": "12"},
+]
+
+# New-style steps list
+_STRENGTH_STEPS_STRAIGHT = [
+    {"group": {"rounds": 3, "rest": "lap", "steps": [_EX_CLAM]}},
+    {"group": {"rounds": 3, "rest": "lap", "steps": [_EX_WADE]}},
+]
+
+_STRENGTH_STEPS_CIRCUIT = [
+    {"group": {"rounds": 3, "rest": "30", "steps": [
+        _EX_CLAM,
+        {"pause": "lap"},
+        _EX_WADE,
+    ]}},
 ]
 
 
@@ -488,7 +509,7 @@ class TestStrengthWorkout:
             "type": "strength",
             "focus": "Hüftstabi",
             "duration_min": 20,
-            "exercises": _STRENGTH_EXERCISES,
+            "steps": _STRENGTH_STEPS_STRAIGHT,
         }
         base.update(kwargs)
         return base
@@ -510,19 +531,12 @@ class TestStrengthWorkout:
         s = first(self._session())
         assert s["steps"][0]["stepType"]["stepTypeKey"] == "warmup"
 
-    def test_one_repeat_group_per_exercise(self):
+    def test_straight_set_one_group_per_exercise(self):
         s = first(self._session())
         rgs = [st for st in s["steps"] if st.get("type") == "RepeatGroupDTO"]
-        assert len(rgs) == len(_STRENGTH_EXERCISES)
+        assert len(rgs) == 2
 
-    def test_repeat_group_contains_interval_and_rest(self):
-        s = first(self._session())
-        rg = next(st for st in s["steps"] if st.get("type") == "RepeatGroupDTO")
-        keys = [step["stepType"]["stepTypeKey"] for step in rg["workoutSteps"]]
-        assert "interval" in keys
-        assert "rest" in keys
-
-    def test_repeat_group_iterations_match_sets(self):
+    def test_straight_set_iterations(self):
         s = first(self._session())
         rg = next(st for st in s["steps"] if st.get("type") == "RepeatGroupDTO")
         assert rg["numberOfIterations"] == 3
@@ -531,15 +545,100 @@ class TestStrengthWorkout:
         s = first(self._session(duration_min=25))
         assert s["estimated_secs"] == 1500
 
-    def test_no_exercises_returns_empty(self):
-        assert session_to_workout(self._session(exercises=[])) == []
+    def test_no_steps_returns_empty(self):
+        assert session_to_workout(self._session(steps=[])) == []
+
+    def test_legacy_exercises_fallback(self):
+        session = {"type": "strength", "focus": "Test", "duration_min": 20,
+                   "exercises": _STRENGTH_EXERCISES}
+        specs = session_to_workout(session)
+        assert len(specs) == 1  # still works with deprecation warning
 
     def test_optional_returns_empty(self):
         assert session_to_workout(self._session(optional=True)) == []
 
     def test_all_unmapped_returns_empty(self):
-        s = self._session(exercises=[{"name": "Unbekanntes Ding", "sets": 3, "reps": "10"}])
-        assert session_to_workout(s) == []
+        bad_steps = [{"group": {"rounds": 3, "rest": "lap",
+                                "steps": [{"exercise": True, "name": "Ding", "reps": "10"}]}}]
+        assert session_to_workout(self._session(steps=bad_steps)) == []
+
+
+class TestCircuitWorkout:
+    def _session(self):
+        return {
+            "type": "strength",
+            "focus": "Circuit",
+            "duration_min": 20,
+            "steps": _STRENGTH_STEPS_CIRCUIT,
+        }
+
+    def test_single_repeat_group(self):
+        s = first(self._session())
+        rgs = [st for st in s["steps"] if st.get("type") == "RepeatGroupDTO"]
+        assert len(rgs) == 1
+
+    def test_circuit_rounds(self):
+        s = first(self._session())
+        rg = next(st for st in s["steps"] if st.get("type") == "RepeatGroupDTO")
+        assert rg["numberOfIterations"] == 3
+
+    def test_circuit_inner_steps_contain_both_exercises(self):
+        s = first(self._session())
+        rg = next(st for st in s["steps"] if st.get("type") == "RepeatGroupDTO")
+        inner = rg["workoutSteps"]
+        # clam + pause + wade + between-round rest = 4 steps
+        assert len(inner) == 4
+        interval_steps = [st for st in inner if st.get("stepType", {}).get("stepTypeKey") == "interval"]
+        assert len(interval_steps) == 2
+
+    def test_circuit_inner_pause_is_lap_button(self):
+        s = first(self._session())
+        rg = next(st for st in s["steps"] if st.get("type") == "RepeatGroupDTO")
+        inner_pauses = [st for st in rg["workoutSteps"]
+                        if st.get("stepType", {}).get("stepTypeKey") == "rest"
+                        and st.get("endCondition", {}).get("conditionTypeKey") == "lap.button"]
+        assert len(inner_pauses) >= 1
+
+    def test_between_round_rest_is_timed(self):
+        s = first(self._session())
+        rg = next(st for st in s["steps"] if st.get("type") == "RepeatGroupDTO")
+        timed = [st for st in rg["workoutSteps"]
+                 if st.get("stepType", {}).get("stepTypeKey") == "rest"
+                 and st.get("endCondition", {}).get("conditionTypeKey") == "time"]
+        assert len(timed) == 1
+        assert timed[0]["endConditionValue"] == 30.0
+
+
+class TestBuildStrengthSteps:
+    def test_single_exercise(self):
+        steps, _ = _build_strength_steps([_EX_CLAM], base_order=1)
+        assert len(steps) == 1
+        assert steps[0]["stepType"]["stepTypeKey"] == "interval"
+
+    def test_pause_lap(self):
+        steps, _ = _build_strength_steps([{"pause": "lap"}], base_order=1)
+        assert steps[0]["endCondition"]["conditionTypeKey"] == "lap.button"
+
+    def test_pause_timed(self):
+        steps, _ = _build_strength_steps([{"pause": "45s"}], base_order=1)
+        assert steps[0]["endCondition"]["conditionTypeKey"] == "time"
+        assert steps[0]["endConditionValue"] == 45.0
+
+    def test_group_produces_repeat_dto(self):
+        items = [{"group": {"rounds": 2, "steps": [_EX_CLAM]}}]
+        steps, _ = _build_strength_steps(items, base_order=1)
+        assert steps[0]["type"] == "RepeatGroupDTO"
+        assert steps[0]["numberOfIterations"] == 2
+
+    def test_mixed_top_level(self):
+        items = [_EX_CLAM, {"pause": "lap"}, _EX_WADE]
+        steps, _ = _build_strength_steps(items, base_order=1)
+        assert len(steps) == 3
+        assert steps[0]["stepType"]["stepTypeKey"] == "interval"
+        assert steps[1]["stepType"]["stepTypeKey"] == "rest"
+        assert steps[2]["stepType"]["stepTypeKey"] == "interval"
+
+
 
 
 class TestRestWithStrength:
@@ -549,7 +648,7 @@ class TestRestWithStrength:
             "strength": {
                 "focus": "Rumpf",
                 "duration_min": 20,
-                "exercises": _STRENGTH_EXERCISES,
+                "steps": _STRENGTH_STEPS_STRAIGHT,
             },
         }
         base.update(kwargs)
@@ -577,7 +676,7 @@ class TestEasyWithStrength:
             "strength": {
                 "focus": "Hüftstabi",
                 "duration_min": 20,
-                "exercises": _STRENGTH_EXERCISES,
+                "steps": _STRENGTH_STEPS_STRAIGHT,
             },
         }
         base.update(kwargs)
