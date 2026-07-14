@@ -1031,6 +1031,7 @@ def main() -> None:
         die(
             "Usage:\n"
             "  push-workouts-garmin.py <user> --week <week-file> [--dry-run [--format table|json|yaml]]\n"
+            "  push-workouts-garmin.py <user> --date <YYYY-MM-DD> <week-file>\n"
             "  push-workouts-garmin.py <user> --plan <plan-dir>  [--dry-run [--format table|json|yaml]]\n"
             "  push-workouts-garmin.py <user> --delete-date <YYYY-MM-DD>"
         )
@@ -1058,6 +1059,27 @@ def main() -> None:
         date_str = positional[0] if positional else die("Missing date")
         garmin = init_garmin(tokenstore)
         delete_date_workouts(garmin, tokenstore, date_str)
+        return
+
+    if mode == "--date":
+        # Upload a single specific date from a week YAML (bypasses future_only filter).
+        if len(positional) < 2:
+            die("Usage: --date <YYYY-MM-DD> <week-file>")
+        date_str = positional[0]
+        path = Path(positional[1])
+        if not path.exists() and not path.with_suffix(".yaml").exists():
+            die(f"File not found: {path}")
+        data = load_week_yaml(path)
+        session = next((s for s in data.get("sessions", []) if s.get("date") == date_str), None)
+        if session is None:
+            die(f"No session found for {date_str} in {path}")
+        specs = session_to_workout(session)
+        if not specs:
+            die(f"No uploadable workout for {date_str} (rest or optional)")
+        garmin = init_garmin(tokenstore)
+        delete_date_workouts(garmin, tokenstore, date_str)
+        for spec in specs:
+            upload_and_schedule(garmin, tokenstore, date_str, spec)
         return
 
     if mode == "--week":
