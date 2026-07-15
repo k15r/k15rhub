@@ -88,30 +88,36 @@ Do **not** automatically proceed to Step 2 after migration — stop here and let
 ## Step 2 — Push to Garmin
 
 The `push-workouts-garmin.py` script lives alongside `analyze-activity` in the plugin.
+Pass `--help` to any subcommand for a full argument reference, e.g.:
+
+```bash
+uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER training --help
+uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER training push --help
+```
 
 **For a single week (or the default 7-day scope, which may cover two week YAMLs):**
 
 For each week YAML in scope:
 
-1. Read the week YAML to identify all non-rest session dates that are strictly after today **and within the next 7 days** (the same horizon enforced by `--week`).
+1. Read the week YAML to identify all non-rest session dates that are strictly after today **and within the next 7 days** (the same horizon enforced by `training push`).
 2. For each such date, delete any previously scheduled workout:
 
 ```bash
-uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --delete-date <YYYY-MM-DD>
+uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER training delete <YYYY-MM-DD>
 ```
 
 3. Upload and schedule the full week:
 
 ```bash
-uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --week <week-yaml-path>
+uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER training push <week-yaml-path>
 ```
 
-The `--week` command only uploads sessions whose date is strictly after today — today and past sessions are skipped automatically.
+The `training push` command only uploads sessions whose date is strictly after today — today and past sessions are skipped automatically.
 
 **For the full plan:**
 
 ```bash
-uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --plan <plan-dir-path>
+uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER plan push <plan-dir-path>
 ```
 
 For plan mode: the script skips weeks whose `dates.end` is before today and sessions whose date is not strictly after today.

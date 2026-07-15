@@ -585,18 +585,18 @@ For each week YAML to sync (current week, and next week if it has sessions withi
 
 ```bash
 # For each such date:
-uv run --script <skill-dir>/push-workouts-garmin.py $USER --delete-date <YYYY-MM-DD>
+uv run --script <skill-dir>/push-workouts-garmin.py $USER training delete <YYYY-MM-DD>
 ```
 
 3. Upload the week:
 
 ```bash
-uv run --script <skill-dir>/push-workouts-garmin.py $USER --week <week-yaml-path>
+uv run --script <skill-dir>/push-workouts-garmin.py $USER training push <week-yaml-path>
 ```
 
-The `--week` flag only uploads sessions with dates strictly after today, so today and past sessions are skipped automatically.
+The `training push` command only uploads sessions with dates strictly after today, so today and past sessions are skipped automatically.
 
-Pass the `.yaml` path (not `.md`) to `--week` — both files are rewritten by the agent, and the script reads the YAML.
+Pass the `.yaml` path (not `.md`) to `training push` — both files are rewritten by the agent, and the script reads the YAML.
 
 Run push-workouts silently — if it fails, log the error but do not block the user.
 

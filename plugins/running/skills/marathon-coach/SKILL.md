@@ -181,7 +181,7 @@ After the agent responds: if the response contains a `PLAN_SLUG: <slug>` line, u
 If `garmin_email` is set in `$CONFIG` and ACTION was `new` or `update`, push the full plan to Garmin Connect:
 
 ```bash
-uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --plan <output_dir>/<Race-Type-Folder>/<plan-slug>/
+uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER plan push <output_dir>/<Race-Type-Folder>/<plan-slug>/
 ```
 
 This uploads and schedules sessions within the next 7 days as structured workouts. Run silently in the background — if it fails, log the error but do not block the user. Inform the user that only the next 7 days are pushed to Garmin; run `/sync-garmin` each week to keep the calendar current.
@@ -193,7 +193,7 @@ If ACTION is `sync`, skip the agent entirely and go directly to the Garmin push:
 3. Run:
 
 ```bash
-uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --plan <plan-dir>/
+uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER plan push <plan-dir>/
 ```
 
 This pushes all sessions within the next 7 days, replacing any previously scheduled workouts for those dates. Report how many workouts were pushed and on which dates.
@@ -216,8 +216,8 @@ If ACTION is `regen-strength`:
 5. Parse `REGEN_DATES`. For each date in the list, delete and re-upload the Garmin workout:
 
 ```bash
-uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --delete-date <date>
-uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER --week <week-yaml-path>
+uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER training delete <date>
+uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER training push <week-yaml-path>
 ```
 
 6. Report which weeks were updated, which dates were re-synced to Garmin, and the agent's `COACHING_NOTE`.
