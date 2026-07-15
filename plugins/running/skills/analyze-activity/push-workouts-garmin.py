@@ -14,16 +14,14 @@ push-workouts-garmin.py — upload structured workouts to Garmin Connect and sch
 Reads week YAML files (W<N> – DD.MM–DD.MM.yaml) as the source of truth.
 No markdown parsing — YAML is the canonical plan data.
 
-Modes:
-    push-workouts-garmin.py <user> --week <week-file-path>
-        Upload and schedule all non-rest, non-optional sessions from one week YAML.
-        Also accepts a .md path — will resolve to the sibling .yaml.
+Subcommands:
+    push-workouts-garmin.py <user> training list [<week-file>] [--from YYYY-MM-DD] [--to YYYY-MM-DD]
+    push-workouts-garmin.py <user> training push  <week-file>  [--date YYYY-MM-DD] [--dry-run] [--format table|json|yaml]
+    push-workouts-garmin.py <user> training delete <YYYY-MM-DD>
+    push-workouts-garmin.py <user> plan     list  <plan-dir>   [--from YYYY-MM-DD] [--to YYYY-MM-DD]
+    push-workouts-garmin.py <user> plan     push  <plan-dir>   [--dry-run] [--format table|json|yaml]
 
-    push-workouts-garmin.py <user> --plan <plan-dir-path>
-        Upload and schedule all sessions from every week YAML in a plan directory.
-
-    push-workouts-garmin.py <user> --delete-date <YYYY-MM-DD>
-        Delete all scheduled Garmin workouts tracked for a given date.
+Legacy flags (--week, --plan, --date, --delete-date) are silently translated.
 
 Tracks uploaded workout IDs in ~/.garminconnect/<user>/scheduled_workouts.json.
 Reads Garmin tokens from ~/.garminconnect/<user>/garmin_tokens.json.
@@ -33,6 +31,7 @@ import json
 import os
 import sys
 import yaml
+import argparse
 from datetime import date as date_cls, timedelta
 from pathlib import Path
 
@@ -1107,111 +1106,313 @@ def process_week(garmin, tokenstore: str, yaml_path: Path,
 
 
 # ---------------------------------------------------------------------------
+# Garmin calendar helper
+# ---------------------------------------------------------------------------
+
+def fetch_garmin_calendar(garmin, from_date: str, to_date: str) -> list[dict]:
+    """Fetch scheduled Garmin workouts in [from_date, to_date] via the calendar API."""
+    from datetime import date as _d
+    start = _d.fromisoformat(from_date)
+    end   = _d.fromisoformat(to_date)
+
+    # Collect all (year, month) pairs in the range
+    months = []
+    cur = start.replace(day=1)
+    while cur <= end:
+        months.append((cur.year, cur.month))
+        if cur.month == 12:
+            cur = cur.replace(year=cur.year + 1, month=1)
+        else:
+            cur = cur.replace(month=cur.month + 1)
+
+    items = []
+    for year, month in months:
+        month0 = month - 1  # Garmin calendar API is 0-based
+        resp = garmin.connectapi(f"/calendar-service/year/{year}/month/{month0}")
+        for item in (resp or {}).get("calendarItems", []):
+            if item.get("itemType") != "workout":
+                continue
+            d = item.get("date", "")
+            if from_date <= d <= to_date:
+                items.append({
+                    "date":      d,
+                    "workoutId": item.get("workoutId") or item.get("id"),
+                    "title":     item.get("title", ""),
+                })
+    items.sort(key=lambda x: x["date"])
+    return items
+
+
+def cmd_training_list(args, garmin, tokenstore: str) -> None:
+    """List training sessions from Garmin and/or a week YAML."""
+    from datetime import date as _d
+
+    if args.week_file:
+        data = load_week_yaml(Path(args.week_file))
+        sessions = data.get("sessions", [])
+        dates = [s["date"] for s in sessions if s.get("date")]
+        from_date = args.from_date or (min(dates) if dates else _d.today().isoformat())
+        to_date   = args.to_date   or (max(dates) if dates else _d.today().isoformat())
+
+        yaml_map: dict[str, list[str]] = {}
+        for s in sessions:
+            d = s.get("date", "")
+            if not d:
+                continue
+            specs = session_to_workout(s)
+            if specs:
+                yaml_map[d] = [sp["name"] for sp in specs]
+            else:
+                yaml_map[d] = []  # rest/optional — MISSING
+
+        garmin_items = fetch_garmin_calendar(garmin, from_date, to_date)
+        garmin_map: dict[str, str] = {it["date"]: it["title"] for it in garmin_items}
+
+        all_dates = sorted(set(yaml_map) | set(garmin_map))
+        rows = []
+        for d in all_dates:
+            in_yaml   = d in yaml_map
+            in_garmin = d in garmin_map
+            if in_yaml and in_garmin and yaml_map[d]:
+                status = "BOTH"
+            elif in_yaml and not in_garmin and yaml_map[d]:
+                status = "YAML_ONLY"
+            elif in_garmin and not in_yaml:
+                status = "GARMIN_ONLY"
+            else:
+                status = "MISSING"
+            rows.append({
+                "date":         d,
+                "status":       status,
+                "yaml_name":    ", ".join(yaml_map.get(d, [])),
+                "garmin_title": garmin_map.get(d, ""),
+            })
+
+        col_w = [12, 12, 35, 30]
+        header = ["DATE", "STATUS", "YAML_NAME", "GARMIN_TITLE"]
+        sep = "| " + " | ".join("-" * w for w in col_w) + " |"
+
+        def fmt_row(cells):
+            return "| " + " | ".join(str(c).ljust(w) for c, w in zip(cells, col_w)) + " |"
+
+        print(fmt_row(header))
+        print(sep)
+        for r in rows:
+            print(fmt_row([r["date"], r["status"], r["yaml_name"], r["garmin_title"]]))
+
+    else:
+        # Garmin-only view
+        from_date = args.from_date or date_cls.today().isoformat()
+        to_date   = args.to_date   or (date_cls.today() + timedelta(days=7)).isoformat()
+        items = fetch_garmin_calendar(garmin, from_date, to_date)
+        col_w = [12, 12, 35]
+        header = ["DATE", "WORKOUT_ID", "TITLE"]
+        sep = "| " + " | ".join("-" * w for w in col_w) + " |"
+
+        def fmt_row(cells):
+            return "| " + " | ".join(str(c).ljust(w) for c, w in zip(cells, col_w)) + " |"
+
+        print(fmt_row(header))
+        print(sep)
+        for it in items:
+            print(fmt_row([it["date"], it["workoutId"], it["title"]]))
+
+
+def cmd_plan_list(args, garmin, tokenstore: str) -> None:
+    """List all training sessions across a full plan directory."""
+    plan_dir = Path(args.plan_dir)
+    if not plan_dir.is_dir():
+        die(f"Plan directory not found: {plan_dir}")
+    yaml_files = sorted(plan_dir.glob("W[0-9]* – *.yaml"))
+    if not yaml_files:
+        die(f"No week YAML files found in {plan_dir}")
+
+    yaml_map: dict[str, list[str]] = {}
+    for yf in yaml_files:
+        data = load_week_yaml(yf)
+        for s in data.get("sessions", []):
+            d = s.get("date", "")
+            if not d:
+                continue
+            specs = session_to_workout(s)
+            yaml_map[d] = [sp["name"] for sp in specs] if specs else []
+
+    if not yaml_map:
+        print("No sessions found.")
+        return
+
+    all_dates = sorted(yaml_map)
+    from_date = args.from_date or all_dates[0]
+    to_date   = args.to_date   or all_dates[-1]
+
+    garmin_items = fetch_garmin_calendar(garmin, from_date, to_date)
+    garmin_map: dict[str, str] = {it["date"]: it["title"] for it in garmin_items}
+
+    filtered_dates = [d for d in all_dates if from_date <= d <= to_date]
+    # Include Garmin-only dates in range
+    for d in garmin_map:
+        if d not in yaml_map and from_date <= d <= to_date:
+            filtered_dates.append(d)
+    filtered_dates = sorted(set(filtered_dates))
+
+    col_w = [12, 12, 35, 30]
+    header = ["DATE", "STATUS", "YAML_NAME", "GARMIN_TITLE"]
+    sep = "| " + " | ".join("-" * w for w in col_w) + " |"
+
+    def fmt_row(cells):
+        return "| " + " | ".join(str(c).ljust(w) for c, w in zip(cells, col_w)) + " |"
+
+    print(fmt_row(header))
+    print(sep)
+    for d in filtered_dates:
+        in_yaml   = d in yaml_map
+        in_garmin = d in garmin_map
+        if in_yaml and in_garmin and yaml_map[d]:
+            status = "BOTH"
+        elif in_yaml and not in_garmin and yaml_map[d]:
+            status = "YAML_ONLY"
+        elif in_garmin and not in_yaml:
+            status = "GARMIN_ONLY"
+        else:
+            status = "MISSING"
+        print(fmt_row([d, status, ", ".join(yaml_map.get(d, [])), garmin_map.get(d, "")]))
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    if len(sys.argv) < 3:
-        die(
-            "Usage:\n"
-            "  push-workouts-garmin.py <user> --week <week-file> [--dry-run [--format table|json|yaml]]\n"
-            "  push-workouts-garmin.py <user> --date <YYYY-MM-DD> <week-file>\n"
-            "  push-workouts-garmin.py <user> --plan <plan-dir>  [--dry-run [--format table|json|yaml]]\n"
-            "  push-workouts-garmin.py <user> --delete-date <YYYY-MM-DD>"
-        )
-
+    if len(sys.argv) < 2:
+        die("Usage: push-workouts-garmin.py <user> <subcommand> ...")
     user = sys.argv[1]
-    mode = sys.argv[2]
+    rest = sys.argv[2:]
     tokenstore = str(Path(os.getenv("GARMINTOKENS", f"~/.garminconnect/{user}")).expanduser())
 
-    args = sys.argv[3:]
-    dry_run = "--dry-run" in args
-    fmt = "table"
-    positional = []
-    i = 0
-    while i < len(args):
-        if args[i] == "--dry-run":
-            i += 1
-        elif args[i] == "--format" and i + 1 < len(args):
-            fmt = args[i + 1]
-            i += 2
+    # Legacy alias detection — translate old-style flags to new subcommand argv
+    if rest and rest[0].startswith("--"):
+        legacy = rest[0]
+        legacy_rest = rest[1:]
+        if legacy == "--delete-date":
+            rest = ["training", "delete"] + legacy_rest
+        elif legacy == "--week":
+            # --week <file> [--dry-run] [--format X]
+            rest = ["training", "push"] + legacy_rest
+        elif legacy == "--date":
+            # --date <YYYY-MM-DD> <file>
+            if len(legacy_rest) >= 2:
+                rest = ["training", "push", legacy_rest[1], "--date", legacy_rest[0]]
+            else:
+                die("Legacy --date requires <YYYY-MM-DD> <week-file>")
+        elif legacy == "--plan":
+            rest = ["plan", "push"] + legacy_rest
         else:
-            positional.append(args[i])
-            i += 1
+            die(f"Unknown flag: {legacy!r}")
 
-    if mode == "--delete-date":
-        date_str = positional[0] if positional else die("Missing date")
-        garmin = init_garmin(tokenstore)
-        delete_date_workouts(garmin, tokenstore, date_str)
-        return
+    parser = argparse.ArgumentParser(prog="push-workouts-garmin.py")
+    noun_sub = parser.add_subparsers(dest="noun", required=True)
 
-    if mode == "--date":
-        # Upload a single specific date from a week YAML (bypasses future_only filter).
-        if len(positional) < 2:
-            die("Usage: --date <YYYY-MM-DD> <week-file>")
-        date_str = positional[0]
-        path = Path(positional[1])
-        if not path.exists() and not path.with_suffix(".yaml").exists():
-            die(f"File not found: {path}")
-        data = load_week_yaml(path)
-        session = next((s for s in data.get("sessions", []) if s.get("date") == date_str), None)
-        if session is None:
-            die(f"No session found for {date_str} in {path}")
-        specs = session_to_workout(session)
-        if not specs:
-            die(f"No uploadable workout for {date_str} (rest or optional)")
-        garmin = init_garmin(tokenstore)
-        delete_date_workouts(garmin, tokenstore, date_str)
-        for spec in specs:
-            upload_and_schedule(garmin, tokenstore, date_str, spec)
-        return
+    # training subcommand
+    training_p = noun_sub.add_parser("training")
+    verb_sub_t = training_p.add_subparsers(dest="verb", required=True)
 
-    if mode == "--week":
-        if not positional:
-            die("Missing week file path")
-        path = Path(positional[0])
-        if not path.exists() and not path.with_suffix(".yaml").exists():
-            die(f"File not found: {path}")
-        if dry_run:
-            dry_run_week(path, fmt)
-            return
-        garmin = init_garmin(tokenstore)
-        process_week(garmin, tokenstore, path, future_only=True)
-        return
+    tl = verb_sub_t.add_parser("list")
+    tl.add_argument("week_file", nargs="?")
+    tl.add_argument("--from", dest="from_date")
+    tl.add_argument("--to",   dest="to_date")
+    tl.add_argument("--format", dest="fmt", default="table", choices=["table", "json", "yaml"])
 
-    if mode == "--plan":
-        if not positional:
-            die("Missing plan directory path")
-        plan_dir = Path(positional[0])
-        if not plan_dir.is_dir():
-            die(f"Plan directory not found: {plan_dir}")
-        yaml_files = sorted(plan_dir.glob("W[0-9]* – *.yaml"))
-        if not yaml_files:
-            die(f"No week YAML files found in {plan_dir}")
-        today = date_cls.today().isoformat()
-        if dry_run:
-            for yf in yaml_files:
-                data = load_week_yaml(yf)
-                if data.get("dates", {}).get("end", "9999") < today:
-                    continue
-                print(f"=== {yf.name} ===", file=sys.stderr)
-                dry_run_week(yf, fmt)
-            return
-        garmin = init_garmin(tokenstore)
-        pushed = 0
-        for yf in yaml_files:
-            # Skip weeks that have already ended
-            data = load_week_yaml(yf)
-            if data.get("dates", {}).get("end", "9999") < today:
-                print(f"  Skipping past week: {yf.name}", file=sys.stderr)
-                continue
-            print(f">>> Processing {yf.name} …", file=sys.stderr)
-            process_week(garmin, tokenstore, yf, future_only=True)
-            pushed += 1
-        print(f">>> Done — pushed {pushed} week(s).", file=sys.stderr)
-        return
+    tp = verb_sub_t.add_parser("push")
+    tp.add_argument("week_file")
+    tp.add_argument("--date", dest="date")
+    tp.add_argument("--dry-run", action="store_true")
+    tp.add_argument("--format", dest="fmt", default="table", choices=["table", "json", "yaml"])
 
-    die(f"Unknown mode: {mode!r}")
+    td = verb_sub_t.add_parser("delete")
+    td.add_argument("date")
+
+    # plan subcommand
+    plan_p = noun_sub.add_parser("plan")
+    verb_sub_p = plan_p.add_subparsers(dest="verb", required=True)
+
+    pl = verb_sub_p.add_parser("list")
+    pl.add_argument("plan_dir")
+    pl.add_argument("--from", dest="from_date")
+    pl.add_argument("--to",   dest="to_date")
+    pl.add_argument("--format", dest="fmt", default="table", choices=["table", "json", "yaml"])
+
+    pp = verb_sub_p.add_parser("push")
+    pp.add_argument("plan_dir")
+    pp.add_argument("--dry-run", action="store_true")
+    pp.add_argument("--format", dest="fmt", default="table", choices=["table", "json", "yaml"])
+
+    args = parser.parse_args(rest)
+
+    if args.noun == "training":
+        if args.verb == "list":
+            garmin = init_garmin(tokenstore)
+            cmd_training_list(args, garmin, tokenstore)
+
+        elif args.verb == "push":
+            path = Path(args.week_file)
+            if not path.exists() and not path.with_suffix(".yaml").exists():
+                die(f"File not found: {path}")
+            if args.dry_run:
+                dry_run_week(path, args.fmt)
+            elif args.date:
+                data = load_week_yaml(path)
+                session = next(
+                    (s for s in data.get("sessions", []) if s.get("date") == args.date), None
+                )
+                if session is None:
+                    die(f"No session found for {args.date} in {path}")
+                specs = session_to_workout(session)
+                if not specs:
+                    die(f"No uploadable workout for {args.date} (rest or optional)")
+                garmin = init_garmin(tokenstore)
+                delete_date_workouts(garmin, tokenstore, args.date)
+                for spec in specs:
+                    upload_and_schedule(garmin, tokenstore, args.date, spec)
+            else:
+                garmin = init_garmin(tokenstore)
+                process_week(garmin, tokenstore, path, future_only=True)
+
+        elif args.verb == "delete":
+            garmin = init_garmin(tokenstore)
+            delete_date_workouts(garmin, tokenstore, args.date)
+
+    elif args.noun == "plan":
+        if args.verb == "list":
+            garmin = init_garmin(tokenstore)
+            cmd_plan_list(args, garmin, tokenstore)
+
+        elif args.verb == "push":
+            plan_dir = Path(args.plan_dir)
+            if not plan_dir.is_dir():
+                die(f"Plan directory not found: {plan_dir}")
+            yaml_files = sorted(plan_dir.glob("W[0-9]* – *.yaml"))
+            if not yaml_files:
+                die(f"No week YAML files found in {plan_dir}")
+            today = date_cls.today().isoformat()
+            if args.dry_run:
+                for yf in yaml_files:
+                    data = load_week_yaml(yf)
+                    if data.get("dates", {}).get("end", "9999") < today:
+                        continue
+                    print(f"=== {yf.name} ===", file=sys.stderr)
+                    dry_run_week(yf, args.fmt)
+            else:
+                garmin = init_garmin(tokenstore)
+                pushed = 0
+                for yf in yaml_files:
+                    data = load_week_yaml(yf)
+                    if data.get("dates", {}).get("end", "9999") < today:
+                        print(f"  Skipping past week: {yf.name}", file=sys.stderr)
+                        continue
+                    print(f">>> Processing {yf.name} …", file=sys.stderr)
+                    process_week(garmin, tokenstore, yf, future_only=True)
+                    pushed += 1
+                print(f">>> Done — pushed {pushed} week(s).", file=sys.stderr)
 
 
 if __name__ == "__main__":
