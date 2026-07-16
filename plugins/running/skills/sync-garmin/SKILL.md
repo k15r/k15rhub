@@ -65,7 +65,7 @@ If `current_plan` is empty and no path was provided, inform the user and stop.
 Run the migration script in dry-run mode first and show the user what would change:
 
 ```bash
-uv run --script <skill-dir>/../analyze-activity/migrate-strength.py <plan-dir> --dry-run
+uv run --script <skill-dir>/../analyze-activity/garmin.py migrate strength <plan-dir> --dry-run
 ```
 
 If there is nothing to migrate, tell the user and stop.
@@ -73,7 +73,7 @@ If there is nothing to migrate, tell the user and stop.
 If there are sessions to migrate, show the dry-run output and ask the user to confirm before applying:
 
 ```bash
-uv run --script <skill-dir>/../analyze-activity/migrate-strength.py <plan-dir>
+uv run --script <skill-dir>/../analyze-activity/garmin.py migrate strength <plan-dir>
 ```
 
 After a successful migration, remind the user:
@@ -87,12 +87,12 @@ Do **not** automatically proceed to Step 2 after migration — stop here and let
 
 ## Step 2 — Push to Garmin
 
-The `push-workouts-garmin.py` script lives alongside `analyze-activity` in the plugin.
+The `garmin.py` CLI lives alongside `analyze-activity` in the plugin.
 Pass `--help` to any subcommand for a full argument reference, e.g.:
 
 ```bash
-uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER training --help
-uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER training push --help
+uv run --script <skill-dir>/../analyze-activity/garmin.py training --help
+uv run --script <skill-dir>/../analyze-activity/garmin.py training push --help
 ```
 
 **For a single week (or the default 7-day scope, which may cover two week YAMLs):**
@@ -103,13 +103,13 @@ For each week YAML in scope:
 2. For each such date, delete any previously scheduled workout:
 
 ```bash
-uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER training delete <YYYY-MM-DD>
+uv run --script <skill-dir>/../analyze-activity/garmin.py --user $USER training delete <YYYY-MM-DD>
 ```
 
 3. Upload and schedule the full week:
 
 ```bash
-uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER training push <week-yaml-path>
+uv run --script <skill-dir>/../analyze-activity/garmin.py --user $USER training push <week-yaml-path>
 ```
 
 The `training push` command only uploads sessions whose date is strictly after today — today and past sessions are skipped automatically.
@@ -117,10 +117,10 @@ The `training push` command only uploads sessions whose date is strictly after t
 **For the full plan:**
 
 ```bash
-uv run --script <skill-dir>/../analyze-activity/push-workouts-garmin.py $USER plan push <plan-dir-path>
+uv run --script <skill-dir>/../analyze-activity/garmin.py --user $USER plan push <plan-dir-path>
 ```
 
-For plan mode: the script skips weeks whose `dates.end` is before today and sessions whose date is not strictly after today.
+For plan mode: the command skips weeks whose `dates.end` is before today and sessions whose date is not strictly after today.
 
 ---
 

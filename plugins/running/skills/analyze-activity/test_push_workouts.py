@@ -707,10 +707,9 @@ class TestExerciseStep:
         assert step["category"] == "BANDED_EXERCISES"
         assert step["exerciseName"] == "CLAM_SHELLS"
 
-    def test_legacy_name_lookup(self):
-        step = exercise_step(1, {"name": "Plank", "sets": 3, "reps": "30 s"})
-        assert step["category"] == "PLANK"
-        assert step["exerciseName"] == "PLANK"
+    def test_name_only_returns_none(self):
+        # Name-based lookup was removed — garmin_category/garmin_exercise are required.
+        assert exercise_step(1, {"name": "Plank", "sets": 3, "reps": "30 s"}) is None
 
     def test_unknown_exercise_returns_none(self):
         assert exercise_step(1, {"name": "Unbekannte Übung", "sets": 3, "reps": "10"}) is None
@@ -742,10 +741,11 @@ class TestExerciseStep:
         step = exercise_step(1, self._ex())
         assert step["stepType"]["stepTypeKey"] == "interval"
 
-    def test_weight_value_present(self):
+    def test_bodyweight_is_null(self):
+        # Bodyweight exercises send null weight (Garmin "Nicht eingerichtet (Körpergewicht)").
         step = exercise_step(1, self._ex())
-        assert step["weightValue"] == -1.0
-        assert step["weightUnit"]["unitKey"] == "kilogram"
+        assert step["weightValue"] is None
+        assert step["weightUnit"] is None
 
 
 # ---------------------------------------------------------------------------

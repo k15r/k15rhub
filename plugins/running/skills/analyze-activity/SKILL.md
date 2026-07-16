@@ -48,26 +48,26 @@ Read `output_dir` and `current_plan` from `$CONFIG`.
 If the remaining argument (after stripping `user=<name>`) starts with `list`, run in list mode:
 
 ```bash
-bash <skill-dir>/fetch-fit.sh $USER --list [<count>]
+uv run --script <skill-dir>/garmin.py --user $USER activity list [--count <count>]
 ```
 
 Display the printed table to the user and **stop — do not proceed to Steps 2–9**. The user can then re-invoke the skill with a specific activity ID or date from the table.
 
-Otherwise, run the fetch script to download an activity:
+Otherwise, run the fetch command to download an activity:
 
 ```bash
-bash <skill-dir>/fetch-fit.sh $USER $ACTIVITY_ARGUMENT
+uv run --script <skill-dir>/garmin.py --user $USER activity fetch [--id <id> | --date <YYYY-MM-DD>]
 ```
 
-Where `$ACTIVITY_ARGUMENT` is the remaining argument after stripping `user=<name>` (may be empty → latest activity).
+Where the activity is selected by `--id` or `--date` (omit both → latest activity).
 
-The script checks that `fit-analyzer` is installed and exits with an error if not — install it from https://github.com/k15r/fit-analyzer
+The command checks that `fit-analyzer` is installed and exits with an error if not — install it from https://github.com/k15r/fit-analyzer
 
-The source is Garmin Connect via `fetch-fit-garmin.py` (requires `uv`; dependencies are installed automatically on first run via PEP 723 inline metadata). After downloading the activity, the script automatically fetches health summaries for all days since the last health sync up to yesterday (complete data), and re-fetches today if a partial entry already exists.
+The source is Garmin Connect (requires `uv`; dependencies are installed automatically on first run via PEP 723 inline metadata). After downloading the activity, the command automatically fetches health summaries for all days since the last health sync up to yesterday (complete data), and re-fetches today if a partial entry already exists.
 
-- No argument → latest activity (any sport)
-- Numeric ID → that specific activity
-- `YYYY-MM-DD` → first activity on that date
+- `--id` and `--date` both omitted → latest activity (any sport)
+- `--id <id>` → that specific activity
+- `--date <YYYY-MM-DD>` → first activity on that date
 
 **Output format — first line:**
 
@@ -585,20 +585,20 @@ For each week YAML to sync (current week, and next week if it has sessions withi
 
 ```bash
 # For each such date:
-uv run --script <skill-dir>/push-workouts-garmin.py $USER training delete <YYYY-MM-DD>
+uv run --script <skill-dir>/garmin.py --user $USER training delete <YYYY-MM-DD>
 ```
 
 3. Upload the week:
 
 ```bash
-uv run --script <skill-dir>/push-workouts-garmin.py $USER training push <week-yaml-path>
+uv run --script <skill-dir>/garmin.py --user $USER training push <week-yaml-path>
 ```
 
 The `training push` command only uploads sessions with dates strictly after today, so today and past sessions are skipped automatically.
 
-Pass the `.yaml` path (not `.md`) to `training push` — both files are rewritten by the agent, and the script reads the YAML.
+Pass the `.yaml` path (not `.md`) to `training push` — both files are rewritten by the agent, and the command reads the YAML.
 
-Run push-workouts silently — if it fails, log the error but do not block the user.
+Run the command silently — if it fails, log the error but do not block the user.
 
 Then display the agent's `COACHING_NOTE:` to the user.
 

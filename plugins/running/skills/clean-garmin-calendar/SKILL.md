@@ -5,7 +5,7 @@ description: >-
   onward. Optionally also deletes the workout definitions from the library. Use this
   to clear the Garmin calendar before a full re-sync, or when a training plan changes
   significantly. Requires garmin_email in config.
-argument-hint: "[user=<name>] [--library]"
+argument-hint: "[user=<name>] [--date <YYYY-MM-DD>] [--library]"
 allowed-tools:
   - Read(~/.marathon-coach/**)
   - Read(~/.garminconnect/**)
@@ -19,6 +19,7 @@ Removes all scheduled workouts from the Garmin Connect calendar from today onwar
 **User arguments:** `$ARGUMENTS`
 
 - `user=<name>` *(optional)* — which user's config to use
+- `--date <YYYY-MM-DD>` *(optional)* — only clean this single day (default: today through race_date)
 - `--library` *(optional)* — also delete the workout definitions from the Garmin library (not just the calendar entries)
 
 ---
@@ -47,13 +48,13 @@ Wait for explicit confirmation. Abort if anything other than yes/y/ja/j.
 ## Step 2 — Run cleanup script
 
 ```bash
-uv run --script <skill-dir>/clean-garmin-calendar.py <USER> [--library]
+uv run --script <skill-dir>/../analyze-activity/garmin.py --user $USER calendar clean [--date <YYYY-MM-DD>] [--library]
 ```
 
-The script:
+The command:
 
-1. Reads `race_date` from config to determine coverage end. Fetches scheduled workouts for all months from today through `race_date` (at least 4 months ahead if `race_date` is not set or already past).
-2. Filters to entries whose date ≥ today
+1. Without `--date`: reads `race_date` from config to determine coverage end. Fetches scheduled workouts for all months from today through `race_date` (at least 4 months ahead if `race_date` is not set or already past), filtered to entries whose date ≥ today.
+2. With `--date <YYYY-MM-DD>`: only that single day's scheduled workouts are removed.
 3. Calls `unschedule_workout(scheduled_id)` for each
 4. If `--library` was passed: collects the unique `workoutId` values and calls `delete_workout(workout_id)` for each
 

@@ -437,64 +437,6 @@ def append_strides(steps: list, strides: dict, base_order: int, estimated_secs: 
 # Session → Garmin workout (from YAML session dict)
 # ---------------------------------------------------------------------------
 
-# Legacy name→Garmin mapping kept for backward compatibility with existing YAMLs
-# that don't yet have garmin_category/garmin_exercise fields.
-# New YAMLs should set those fields directly (see marathon-coach schema).
-_EXERCISE_MAP: dict[str, tuple[str, str]] = {
-    "clamshells":                     ("BANDED_EXERCISES", "CLAM_SHELLS"),
-    "seitliches beinheben":           ("HIP_STABILITY", "SIDE_LYING_LEG_RAISE"),
-    "hüftabduktion":                  ("HIP_STABILITY", "STANDING_HIP_ABDUCTION"),
-    "hüftkreisen":                    ("HIP_STABILITY", "HIP_CIRCLES"),
-    "monster walks":                  ("HIP_STABILITY", "LATERAL_WALKS_WITH_BAND_AT_ANKLES"),
-    "bulgarian split squat":          ("SQUAT", "PISTOL_SQUAT"),
-    "einbeinige kniebeuge":           ("SQUAT", "PISTOL_SQUAT"),
-    "kniebeuge":                      ("SQUAT", "BACK_SQUATS"),
-    "einbeiniges kreuzheben":         ("DEADLIFT", "SINGLE_LEG_BARBELL_DEADLIFT"),
-    "einbeinige rdl":                 ("DEADLIFT", "SINGLE_LEG_BARBELL_DEADLIFT"),
-    "einbeiniges rdl":                ("DEADLIFT", "SINGLE_LEG_BARBELL_DEADLIFT"),
-    "rdl":                            ("DEADLIFT", "ROMANIAN_DEADLIFT"),
-    "kreuzheben":                     ("DEADLIFT", "BARBELL_DEADLIFT"),
-    "wadenheben":                     ("CALF_RAISE", "STANDING_CALF_RAISE"),
-    "wadenheben exzentrisch":         ("CALF_RAISE", "SINGLE_LEG_STANDING_CALF_RAISE"),
-    "wadenheben exz.":                ("CALF_RAISE", "SINGLE_LEG_STANDING_CALF_RAISE"),
-    "einbeiniges wadenheben":         ("CALF_RAISE", "SINGLE_LEG_STANDING_CALF_RAISE"),
-    "tibialis anterior heben":        ("WARM_UP", "WALKOUT"),
-    "tibialis heben":                 ("WARM_UP", "WALKOUT"),
-    "plank":                          ("PLANK", "PLANK"),
-    "seitstütz":                      ("PLANK", "SIDE_PLANK"),
-    "seitstütz links":                ("PLANK", "SIDE_PLANK"),
-    "seitstütz rechts":               ("PLANK", "SIDE_PLANK"),
-    "side plank":                     ("PLANK", "SIDE_PLANK"),
-    "dead bug":                       ("HIP_STABILITY", "DEAD_BUG"),
-    "deadbugs":                       ("HIP_STABILITY", "DEAD_BUG"),
-    "hollow holds":                   ("HYPEREXTENSION", "HOLLOW_HOLD_AND_ROLL"),
-    "hollow hold":                    ("HYPEREXTENSION", "HOLLOW_HOLD_AND_ROLL"),
-    "bird dog":                       ("HIP_STABILITY", "QUADRUPED"),
-    "bird-dogs":                      ("HIP_STABILITY", "QUADRUPED"),
-    "bird-dog":                       ("HIP_STABILITY", "QUADRUPED"),
-    "brücke":                         ("HIP_RAISE", "HIP_RAISE"),
-    "einbeinige brücke":              ("HIP_RAISE", "SINGLE_LEG_HIP_RAISE"),
-    "crunch":                         ("CRUNCH", "CRUNCH"),
-    "ausfallschritt":                 ("LUNGE", "LUNGE"),
-    "curtsy lunge":                   ("LUNGE", "CURTSY_LUNGE"),
-    "liegestütz":                     ("PUSH_UP", "PUSH_UP"),
-    "row":                            ("ROW", "BENT_OVER_ROW_WITH_BARBELL"),
-    "pogos":                          ("PLYO", "BOX_JUMP"),
-    "einbeinige hüpfer":              ("PLYO", "BOX_JUMP"),
-    "sprünge":                        ("PLYO", "BOX_JUMP"),
-    "sprunggelenk-cars":              ("WARM_UP", "ANKLE_CIRCLES"),
-    "sprunggelenk cars":              ("WARM_UP", "ANKLE_CIRCLES"),
-    "fersengehen":                    ("RUN", "WALK"),
-    "gehen auf fußkanten":            ("RUN", "WALK"),
-}
-
-if _CATALOGUE:
-    for _german, (_cat, _ex) in _EXERCISE_MAP.items():
-        if _cat not in _CATALOGUE:
-            print(f"WARN exercise map: unknown category {_cat!r} for {_german!r}", file=sys.stderr)
-        elif _ex not in _CATALOGUE[_cat]:
-            print(f"WARN exercise map: {_ex!r} not in category {_cat!r} for {_german!r}", file=sys.stderr)
-
 _WEIGHT_UNIT = {"unitId": 8, "unitKey": "kilogram", "factor": 1000.0}
 _STROKE_TYPE = {"strokeTypeId": 0, "strokeTypeKey": None, "displayOrder": 0}
 _EQUIP_TYPE  = {"equipmentTypeId": 0, "equipmentTypeKey": None, "displayOrder": 0}
@@ -530,28 +472,22 @@ def _strength_rest_step(order: int, child_step_id: int, duration_secs: float | N
 def exercise_step(order: int, ex: dict, child_step_id: int = 1) -> dict | None:
     """Build a single strength interval step from an exercise dict.
 
-    New YAMLs supply garmin_category + garmin_exercise directly.
-    Legacy YAMLs supply only name — looked up via _EXERCISE_MAP (deprecated).
-    Returns None if the exercise cannot be resolved.
+    Requires explicit garmin_category + garmin_exercise. `name` is optional and
+    used only for the human-readable description shown on the watch.
+    Returns None if the required Garmin fields are missing or invalid.
     """
     name = ex.get("name", "")
     reps = str(ex.get("reps", "10"))
     notes = str(ex.get("notes", ""))
 
-    # Prefer explicit Garmin fields
     category = ex.get("garmin_category", "").upper().strip()
     exercise_name = ex.get("garmin_exercise", "").upper().strip()
 
     if not category or not exercise_name:
-        # Legacy fallback: look up by name
-        mapping = _EXERCISE_MAP.get(name.lower().strip())
-        if mapping is None:
-            print(f"  WARN: unmapped exercise {name!r} — skipped (add garmin_category/garmin_exercise to YAML)",
-                  file=sys.stderr)
-            return None
-        category, exercise_name = mapping
-        print(f"  DEPRECATION: {name!r} resolved via legacy map — add garmin_category/garmin_exercise to YAML",
-              file=sys.stderr)
+        label = name or "(unnamed)"
+        print(f"  WARN: {label!r} missing garmin_category/garmin_exercise — skipped. "
+              f"Use `garmin exercise search <term>` to find valid keys.", file=sys.stderr)
+        return None
 
     # Validate against catalogue
     if _CATALOGUE:
@@ -589,8 +525,10 @@ def exercise_step(order: int, ex: dict, child_step_id: int = 1) -> dict | None:
         "category": category,
         "exerciseName": exercise_name,
         "description": description,
-        "weightValue": -1.0,
-        "weightUnit": _WEIGHT_UNIT,
+        # Bodyweight: Garmin represents "Nicht eingerichtet (Körpergewicht)" as
+        # null weight. Set an explicit weight only if a numeric value is given.
+        "weightValue": None,
+        "weightUnit": None,
     }
 
 
@@ -689,7 +627,8 @@ def _strength_workout(s: dict) -> dict | None:
     s is either a full session (type=strength) or the value of session['strength'].
 
     New schema: strength block has a top-level `steps` list of exercise/pause/group items.
-    Legacy schema: flat `exercises` list — warns and falls back to old straight-set behaviour.
+    Legacy schema: flat `exercises` list — converted to straight sets. Each exercise
+    still requires garmin_category/garmin_exercise (name-based lookup was removed).
     """
     block = s.get("strength", s) if s.get("type") == "strength" else s
     focus = block.get("focus", "Kraft/Stabi")

@@ -308,7 +308,14 @@ Never attach a `strength` sub-block to quality sessions (tempo, intervals, long_
 
 **Selecting exercises from the Garmin catalogue:**
 
-All exercises must use valid `garmin_category` / `garmin_exercise` keys from the FIT SDK catalogue (`garmin_exercises.json`, shipped with the plugin). Invalid keys are rejected at upload time.
+All exercises must use valid `garmin_category` / `garmin_exercise` keys from the FIT SDK catalogue (`garmin_exercises.json`, shipped with the plugin — ~1950 exercises across 53 categories). Invalid keys are rejected at upload time. The table below lists common bodyweight-friendly keys, but you are not limited to it — search the full catalogue for any movement:
+
+```bash
+uv run --script <skill-dir>/../skills/analyze-activity/garmin.py exercise search <term>
+uv run --script <skill-dir>/../skills/analyze-activity/garmin.py exercise list --category <CATEGORY>
+```
+
+`exercise search` matches a substring across all category and exercise names (equipment is implied by the key, e.g. `barbell_calf_raise` vs `standing_calf_raise`), so you can pick the exact key that fits the coaching intent and available equipment.
 
 Rules for exercise selection:
 
@@ -602,12 +609,12 @@ steps:
 
 Omit `strength` when no strength work is planned for that day.
 
-**Migrating existing plans:** Older week YAMLs only have strength described in the markdown `Kraft/Stabi` cell, not in the YAML. Run `migrate-strength.py` (in the `analyze-activity` skill directory) to backfill `strength` sub-blocks from the markdown into the YAML. After migration, re-run `/sync-garmin` to upload the new strength workouts.
+**Migrating existing plans:** Older week YAMLs only have strength described in the markdown `Kraft/Stabi` cell, not in the YAML. Run `garmin migrate strength` to backfill `strength` sub-blocks from the markdown into the YAML. After migration, re-run `/sync-garmin` to upload the new strength workouts.
 
 ```bash
-uv run --script <skill-dir>/migrate-strength.py <plan-dir-path>
+uv run --script <skill-dir>/../skills/analyze-activity/garmin.py migrate strength <plan-dir-path>
 # dry-run first:
-uv run --script <skill-dir>/migrate-strength.py <plan-dir-path> --dry-run
+uv run --script <skill-dir>/../skills/analyze-activity/garmin.py migrate strength <plan-dir-path> --dry-run
 ```
 
 **Exercise library rule:** Every exercise name used in a `strength` block must have a corresponding documentation file in `<output_dir>/Übungen/`. Before finalising any strength prescription:
