@@ -36,6 +36,7 @@ When you are done testing, bump the version, commit, push, and run `/plugin mark
 2. **Review the whole repo** — check that all cross-references between skills, agents, and marketplace.json are consistent.
 3. **Bump the version** in `plugins/<name>/.claude-plugin/plugin.json` (semver).
 4. **Update the version** in `.claude-plugin/marketplace.json` for the same plugin.
-5. Commit both the plugin files and the version bump together.
+5. **Update any `> **Version:**` banners** in the plugin's `SKILL.md` files to match the new version — skills announce this string on invocation, so it must not drift from `plugin.json`.
+6. Commit both the plugin files and the version bump together.
 
 The plugin cache is keyed by version — without a bump, consumers won't pick up new files after running `/plugin marketplace update k15rhub`.

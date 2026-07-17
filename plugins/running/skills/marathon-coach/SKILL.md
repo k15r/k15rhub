@@ -14,9 +14,13 @@ allowed-tools:
   - Edit(~/.marathon-coach/**)
   - Write(~/.marathon-coach/**)
   - Read(~/.garminconnect/**)
+  - Bash(uv run --script:*)
+  - Bash(fit-analyzer:*)
 ---
 
 # Marathon Coach
+
+> **Version:** `running v0.10.1` — output this line to the user as the very first thing when this skill is invoked, before doing anything else. Keep it in sync with the plugin version.
 
 **User arguments:** `$ARGUMENTS`
 

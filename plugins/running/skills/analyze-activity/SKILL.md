@@ -15,9 +15,13 @@ allowed-tools:
   - Read(~/.marathon-coach/**)
   - Edit(~/.marathon-coach/**)
   - Write(~/.marathon-coach/**)
+  - Bash(uv run --script:*)
+  - Bash(fit-analyzer:*)
 ---
 
 # Analyze Activity
+
+> **Version:** `running v0.10.1` — output this line to the user as the very first thing when this skill is invoked, before doing anything else. Keep it in sync with the plugin version.
 
 **User arguments:** `$ARGUMENTS`
 
@@ -362,10 +366,11 @@ isowoche: KW<NN>
 
 When `height_profile.svg_path` is present in the fit-analyzer output:
 
-1. Copy the SVG file to the same directory as the `.md` entry, using the same base name: `<output_dir>/Lauftagebuch/YYYY-MM/<filename>.svg`.
-2. In place of `<SVG_ELEVATION_PROFILE>`, insert a standard markdown image link using the copied filename (relative, no path prefix): `![](<filename>.svg)`
+1. Create the `media` subfolder next to the `.md` entry if it does not exist: `<output_dir>/Lauftagebuch/YYYY-MM/media/`.
+2. Move the SVG file into that `media` folder, using the same base name as the `.md` entry: `<output_dir>/Lauftagebuch/YYYY-MM/media/<filename>.svg`.
+3. In place of `<SVG_ELEVATION_PROFILE>`, insert an Obsidian embed referencing the file relative to the `.md` entry: `![[media/<filename>.svg]]`.
 
-**Never inline SVG code into the markdown.** The file must be referenced as a link only.
+**Never inline SVG code into the markdown.** The file must be referenced as an embed only.
 
 If `svg_path` is absent or the file cannot be read, fall back to the sparkline:
 
@@ -558,21 +563,22 @@ Each block uses `<<<` / `>>>` as content delimiters:
 
 ```text
 REWRITE_YAML: <full path to .yaml>
-BACKUP_AS: <path with final .yaml replaced by .bak.YYYY-MM-DD.yaml>
+BACKUP_AS: <plan-dir>/.backup/<original .yaml filename with final .yaml replaced by .bak.YYYY-MM-DD.yaml>
 <<<
 <complete new YAML content>
 >>>
 
 REWRITE_FILE: <full path to .md>
-BACKUP_AS: <path with final .md replaced by .bak.YYYY-MM-DD.md>
+BACKUP_AS: <plan-dir>/.backup/<original .md filename with final .md replaced by .bak.YYYY-MM-DD.md>
 <<<
 <complete new markdown content>
 >>>
 ```
 
 For each block:
-1. Copy the current file to the `BACKUP_AS` path.
-2. Overwrite the original file with the new content.
+1. Create the `.backup/` subfolder of the plan directory if it does not exist.
+2. Copy the current file to the `BACKUP_AS` path (inside `.backup/`, never next to the original — the plan directory stays clean).
+3. Overwrite the original file with the new content.
 
 Then parse `CHANGED_DATES: <comma-separated dates or "none">` from the agent response.
 

@@ -10,6 +10,7 @@ allowed-tools:
   - Read(~/.marathon-coach/**)
   - Read(~/.garminconnect/**)
   - Write(~/.garminconnect/**)
+  - Bash(uv run --script:*)
 ---
 
 # Clean Garmin Calendar
@@ -17,6 +18,8 @@ allowed-tools:
 Removes all scheduled workouts from the Garmin Connect calendar from today onward.
 
 **User arguments:** `$ARGUMENTS`
+
+> **Version:** `running v0.10.1` — output this line to the user as the very first thing when this skill is invoked, before doing anything else. Keep it in sync with the plugin version.
 
 - `user=<name>` *(optional)* — which user's config to use
 - `--date <YYYY-MM-DD>` *(optional)* — only clean this single day (default: today through race_date)

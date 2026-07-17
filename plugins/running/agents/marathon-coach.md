@@ -384,17 +384,19 @@ For each file pair that changes, emit **both** a YAML block and a markdown block
 
 ```text
 REWRITE_YAML: <full absolute path to the .yaml file>
-BACKUP_AS: <same path with final .yaml replaced by .bak.YYYY-MM-DD.yaml>
+BACKUP_AS: <plan-dir>/.backup/<original .yaml filename with final .yaml replaced by .bak.YYYY-MM-DD.yaml>
 <<<
 <complete new YAML content>
 >>>
 
 REWRITE_FILE: <full absolute path to the .md file>
-BACKUP_AS: <same path with final .md replaced by .bak.YYYY-MM-DD.md>
+BACKUP_AS: <plan-dir>/.backup/<original .md filename with final .md replaced by .bak.YYYY-MM-DD.md>
 <<<
 <complete new markdown content>
 >>>
 ```
+
+`<plan-dir>` is the directory containing the week file. Backups always go into a `.backup/` subfolder of the plan directory — never next to the original — so the plan directory stays clean.
 
 If no changes are needed (plan is optimal given actuals), emit no blocks.
 
