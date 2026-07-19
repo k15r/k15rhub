@@ -1,13 +1,13 @@
 ---
 name: analyze-activity
 description: >-
-  Fetches the latest (or a specified) activity from Garmin Connect, downloads
-  the original FIT file, analyzes it with fit-analyzer, writes a standardized Lauftagebuch
-  entry (markdown + YAML) to the Zettelkasten, and triggers adaptive weekly plan adjustment
-  via the marathon-coach agent. Works for any sport type (running, cycling, swimming,
-  strength, etc.). Use this skill after any activity to document it and keep the training
-  plan current. Pass `list` or `list <N>` to browse recent activities without downloading.
-argument-hint: "[user=<name>] [list [<count>] | activity ID | YYYY-MM-DD]"
+  Fetches activities from Garmin Connect, downloads FIT files, analyzes them with
+  fit-analyzer, writes standardized Lauftagebuch entries (markdown + YAML) to the
+  Zettelkasten, and triggers adaptive weekly plan adjustment via the marathon-coach
+  agent. Works for any sport type (running, cycling, swimming, strength, etc.).
+  Use `sync` to process all activities since the last sync; pass an ID or date to
+  process a specific one; or pass `list` to browse recent activities without downloading.
+argument-hint: "[user=<name>] [sync | list [<count>] | activity ID | YYYY-MM-DD]"
 allowed-tools:
   - Read(./**)
   - Edit(./**)
@@ -21,11 +21,12 @@ allowed-tools:
 
 # Analyze Activity
 
-> **Version:** `running v0.10.1` — output this line to the user as the very first thing when this skill is invoked, before doing anything else. Keep it in sync with the plugin version.
+> **Version:** `running v0.10.2` — output this line to the user as the very first thing when this skill is invoked, before doing anything else. Keep it in sync with the plugin version.
 
 **User arguments:** `$ARGUMENTS`
 
 - `user=<name>` *(optional)* — which user's config to use
+- `sync` — process all activities since the last sync (incremental batch mode)
 - `list [<count>]` — list recent activities without downloading (default 20); stop after displaying the table
 - Remaining argument: optional activity ID or date (YYYY-MM-DD). Default: fetch the latest activity.
 
@@ -57,7 +58,17 @@ uv run --script <skill-dir>/garmin.py --user $USER activity list [--count <count
 
 Display the printed table to the user and **stop — do not proceed to Steps 2–9**. The user can then re-invoke the skill with a specific activity ID or date from the table.
 
-Otherwise, run the fetch command to download an activity:
+If the remaining argument is `sync`, run in **batch sync mode**:
+
+```bash
+uv run --script <skill-dir>/garmin.py --user $USER activity sync
+```
+
+The command fetches all activities since the last sync (or the 5 most recent on first run) and emits them in sequence, each preceded by an `---ACTIVITY---` separator line, followed by the activity header line and fit-analyzer output. Health summaries are synced automatically at the end.
+
+**Split the output on `---ACTIVITY---` lines** to get individual activity blocks. For each block, run Steps 2–9 in order before moving to the next. After the last activity, skip the individual Step 9 Garmin sync (training push) for all but the final one — instead, run a single Garmin sync pass at the very end covering the next 7 days (this avoids redundant delete/upload cycles). If there are no activity blocks in the output, inform the user that no new activities were found since the last sync and stop.
+
+Otherwise, run the fetch command to download a single activity:
 
 ```bash
 uv run --script <skill-dir>/garmin.py --user $USER activity fetch [--id <id> | --date <YYYY-MM-DD>]
