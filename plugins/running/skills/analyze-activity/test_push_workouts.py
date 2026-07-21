@@ -784,11 +784,11 @@ class TestExerciseStep:
         step = exercise_step(1, self._ex())
         assert step["stepType"]["stepTypeKey"] == "interval"
 
-    def test_bodyweight_is_null(self):
-        # Bodyweight exercises send null weight (Garmin "Nicht eingerichtet (Körpergewicht)").
+    def test_bodyweight_omits_weight_fields(self):
+        # Bodyweight exercises omit weightValue/weightUnit entirely (no null in payload).
         step = exercise_step(1, self._ex())
-        assert step["weightValue"] is None
-        assert step["weightUnit"] is None
+        assert "weightValue" not in step
+        assert "weightUnit" not in step
 
 
 # ---------------------------------------------------------------------------

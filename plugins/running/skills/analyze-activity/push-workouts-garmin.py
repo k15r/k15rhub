@@ -463,7 +463,7 @@ _EQUIP_TYPE  = {"equipmentTypeId": 0, "equipmentTypeKey": None, "displayOrder": 
 def _strength_rest_step(order: int, child_step_id: int, duration_secs: float | None = None) -> dict:
     """Rest step. duration_secs=None → lap-button; otherwise timed."""
     timed = duration_secs is not None
-    return {
+    step = {
         "type": "ExecutableStepDTO",
         "stepOrder": order,
         "stepType": {"stepTypeId": 5, "stepTypeKey": "rest", "displayOrder": 5},
@@ -476,15 +476,12 @@ def _strength_rest_step(order: int, child_step_id: int, duration_secs: float | N
         },
         "endConditionValue": float(duration_secs) if timed else 0.0,
         "targetType": no_target()["targetType"],
-        "targetValueOne": None,
-        "targetValueTwo": None,
         "strokeType": _STROKE_TYPE,
         "equipmentType": _EQUIP_TYPE,
-        "category": None,
-        "exerciseName": None,
         "weightValue": -1.0,
         "weightUnit": _WEIGHT_UNIT,
     }
+    return step
 
 
 def _parse_reps_time_secs(reps_str: str) -> float | None:
@@ -560,7 +557,7 @@ def exercise_step(order: int, ex: dict, child_step_id: int = 1) -> dict | None:
         parts.append(notes)
     description = " | ".join(parts)
 
-    return {
+    step = {
         "type": "ExecutableStepDTO",
         "stepOrder": order,
         "stepType": {"stepTypeId": 3, "stepTypeKey": "interval", "displayOrder": 3},
@@ -573,8 +570,6 @@ def exercise_step(order: int, ex: dict, child_step_id: int = 1) -> dict | None:
         },
         "endConditionValue": cond_value,
         "targetType": no_target()["targetType"],
-        "targetValueOne": None,
-        "targetValueTwo": None,
         "strokeType": _STROKE_TYPE,
         "equipmentType": _EQUIP_TYPE,
         "category": category,
@@ -582,9 +577,8 @@ def exercise_step(order: int, ex: dict, child_step_id: int = 1) -> dict | None:
         "description": description,
         # Bodyweight: Garmin represents "Nicht eingerichtet (Körpergewicht)" as
         # null weight. Set an explicit weight only if a numeric value is given.
-        "weightValue": None,
-        "weightUnit": None,
     }
+    return step
 
 
 def _parse_pause_secs(pause_val) -> float | None:
@@ -738,15 +732,12 @@ def _strength_workout(s: dict) -> dict | None:
         "type": "ExecutableStepDTO",
         "stepOrder": 1,
         "stepType": {"stepTypeId": 1, "stepTypeKey": "warmup", "displayOrder": 1},
-        "childStepId": None,
         "endCondition": {
             "conditionTypeId": 1, "conditionTypeKey": "lap.button",
             "displayOrder": 1, "displayable": True,
         },
         "endConditionValue": 0.0,
         "targetType": no_target()["targetType"],
-        "targetValueOne": None,
-        "targetValueTwo": 0.0,
         "strokeType": _STROKE_TYPE,
         "equipmentType": _EQUIP_TYPE,
         "category": "CARDIO",
