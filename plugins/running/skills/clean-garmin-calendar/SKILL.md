@@ -19,7 +19,7 @@ Removes all scheduled workouts from the Garmin Connect calendar from today onwar
 
 **User arguments:** `$ARGUMENTS`
 
-> **Version:** `running v0.10.4` — output this line to the user as the very first thing when this skill is invoked, before doing anything else. Keep it in sync with the plugin version.
+> **Version:** `running v0.10.5` — output this line to the user as the very first thing when this skill is invoked, before doing anything else. Keep it in sync with the plugin version.
 
 - `user=<name>` *(optional)* — which user's config to use
 - `--date <YYYY-MM-DD>` *(optional)* — only clean this single day (default: today through race_date)

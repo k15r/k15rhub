@@ -539,6 +539,12 @@ def exercise_step(order: int, ex: dict, child_step_id: int = 1) -> dict | None:
             return None
 
     reps_str = reps.strip()
+    # Warn about per-side notation — these must be split into two explicit exercises in the YAML.
+    if "/" in reps_str.lower():
+        label = name or exercise_name.lower()
+        print(f"  WARN: {label!r} reps={reps_str!r} contains '/' — split into two explicit "
+              f"exercises (e.g. 'links'/'rechts') instead of using per-side notation.",
+              file=sys.stderr)
     time_secs = _parse_reps_time_secs(reps_str)
     is_numeric = reps_str.isdigit()
 

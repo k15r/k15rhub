@@ -22,7 +22,7 @@ uploaded workouts for the same dates before uploading the new versions.
 
 **User arguments:** `$ARGUMENTS`
 
-> **Version:** `running v0.10.4` — output this line to the user as the very first thing when this skill is invoked, before doing anything else. Keep it in sync with the plugin version.
+> **Version:** `running v0.10.5` — output this line to the user as the very first thing when this skill is invoked, before doing anything else. Keep it in sync with the plugin version.
 
 - `user=<name>` *(optional)* — which user's config to use
 - `week` *(optional)* — sync only the next 7 days (default when no scope given); optionally followed by a path to a specific week YAML
