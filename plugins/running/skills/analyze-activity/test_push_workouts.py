@@ -48,6 +48,7 @@ session_to_workout  = _mod.session_to_workout
 build_workout_payload = _mod.build_workout_payload
 exercise_step       = _mod.exercise_step
 _build_strength_steps = _mod._build_strength_steps
+power_zone_target   = _mod.power_zone_target
 _parse_reps_time_secs = _mod._parse_reps_time_secs
 
 
@@ -668,25 +669,6 @@ class TestBuildStrengthSteps:
         assert len(steps) == 2
 
 
-class TestParseRepsTimeSecs:
-    def test_seconds_with_space(self):
-        assert _parse_reps_time_secs("30 s") == 30.0
-
-    def test_seconds_no_space(self):
-        assert _parse_reps_time_secs("45s") == 45.0
-
-    def test_mmss_format(self):
-        assert _parse_reps_time_secs("1:30") == 90.0
-
-    def test_numeric_returns_none(self):
-        assert _parse_reps_time_secs("15") is None
-
-    def test_word_returns_none(self):
-        assert _parse_reps_time_secs("max") is None
-
-
-
-
 class TestRestWithStrength:
     def _session(self, **kwargs):
         base = {
@@ -807,6 +789,79 @@ class TestExerciseStep:
         step = exercise_step(1, self._ex())
         assert step["weightValue"] is None
         assert step["weightUnit"] is None
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Cycling workouts
+# ---------------------------------------------------------------------------
+
+class TestCyclingWorkout:
+    def test_duration_based(self):
+        s = first({"type": "cycling", "duration_min": 60})
+        assert "60'" in s["name"]
+        assert s["sport"]["sportTypeKey"] == "indoor_cycling"
+        assert end_condition(s["steps"][0]) == "time"
+        assert s["steps"][0]["endConditionValue"] == 3600.0
+
+    def test_distance_based(self):
+        s = first({"type": "cycling", "distance_km": 30})
+        assert "30km" in s["name"]
+        assert end_condition(s["steps"][0]) == "distance"
+        assert s["steps"][0]["endConditionValue"] == 30000.0
+
+    def test_hr_target(self):
+        s = first({"type": "cycling", "duration_min": 45, "hr_range": "130–145"})
+        assert target_type(s["steps"][0]) == "heart.rate.zone"
+        assert "@130–145bpm" in s["name"]
+
+    def test_power_target(self):
+        s = first({"type": "cycling", "duration_min": 45, "power_range": "150–200"})
+        assert target_type(s["steps"][0]) == "power.zone"
+        assert "@150–200W" in s["name"]
+
+    def test_power_preferred_over_hr(self):
+        s = first({"type": "cycling", "duration_min": 45,
+                   "hr_range": "130–145", "power_range": "150–200"})
+        assert target_type(s["steps"][0]) == "power.zone"
+
+    def test_missing_duration_and_distance_returns_empty(self):
+        assert session_to_workout({"type": "cycling"}) == []
+
+    def test_single_step(self):
+        s = first({"type": "cycling", "duration_min": 60})
+        assert len(s["steps"]) == 1
+
+
+class TestPowerZoneTarget:
+    def test_type_key(self):
+        t = power_zone_target("150–200")
+        assert t["targetType"]["workoutTargetTypeKey"] == "power.zone"
+
+    def test_bounds(self):
+        t = power_zone_target("150–200")
+        assert t["targetValueOne"] == 150
+        assert t["targetValueTwo"] == 200
+
+
+class TestParseRepsTimeSecs:
+    def test_seconds_with_space(self):
+        assert _parse_reps_time_secs("30 s") == 30.0
+
+    def test_seconds_no_space(self):
+        assert _parse_reps_time_secs("45s") == 45.0
+
+    def test_mmss_format(self):
+        assert _parse_reps_time_secs("1:30") == 90.0
+
+    def test_numeric_returns_none(self):
+        assert _parse_reps_time_secs("15") is None
+
+    def test_word_returns_none(self):
+        assert _parse_reps_time_secs("max") is None
 
 
 # ---------------------------------------------------------------------------

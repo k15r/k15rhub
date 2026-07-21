@@ -192,10 +192,24 @@ def hr_zone_target(hr_range: str) -> dict:
     }
 
 
+def power_zone_target(power_range: str) -> dict:
+    """Build a power zone target from 'NNN–NNN' watts range string."""
+    parts = [p.strip() for p in power_range.replace("—", "–").split("–") if p.strip()]
+    low = int(parts[0])
+    high = int(parts[1]) if len(parts) > 1 else low + 20
+    return {
+        "targetType": {"workoutTargetTypeId": 2, "workoutTargetTypeKey": "power.zone", "displayOrder": 2},
+        "targetValueOne": low,
+        "targetValueTwo": high,
+    }
+
+
 def resolve_target(s: dict) -> dict:
     """Pick the best target from a session dict.
-    Priority: pace_range > hr_range > no target.
+    Priority: power_range > pace_range > hr_range > no target.
     """
+    if s.get("power_range"):
+        return power_zone_target(s["power_range"])
     if s.get("pace_range"):
         return pace_zone_target(s["pace_range"])
     if s.get("hr_range"):
@@ -255,6 +269,10 @@ def step_name_suffix(s: dict) -> str:
 
 def _running_sport() -> dict:
     return {"sportTypeId": 1, "sportTypeKey": "running", "displayOrder": 1}
+
+
+def _cycling_sport() -> dict:
+    return {"sportTypeId": 25, "sportTypeKey": "indoor_cycling", "displayOrder": 25}
 
 
 def _strength_sport() -> dict:
@@ -765,6 +783,11 @@ def session_to_workout(session: dict) -> list[dict]:
         if spec:
             specs.append(spec)
         return specs
+    elif stype == "cycling":
+        spec = _cycling_workout(session)
+        if spec:
+            specs.append(spec)
+        return specs
     elif stype == "easy":
         spec = _easy_workout(session)
         if spec:
@@ -806,6 +829,32 @@ def session_to_workout(session: dict) -> list[dict]:
             specs.append(strength_spec)
 
     return specs
+
+
+def _cycling_workout(s: dict) -> dict | None:
+    duration_min = s.get("duration_min")
+    distance_km = s.get("distance_km")
+    target = resolve_target(s)
+
+    target_suffix = ""
+    if s.get("power_range"):
+        target_suffix = f"@{s['power_range']}W"
+    elif s.get("hr_range"):
+        target_suffix = f"@{s['hr_range']}bpm"
+
+    if duration_min is not None:
+        name = f"Rad {int(duration_min)}'{target_suffix}"
+        step = make_step(1, 8, "main", 2, "time", float(duration_min) * 60, target)
+        est = int(float(duration_min) * 60)
+    elif distance_km is not None:
+        name = f"Rad {float(distance_km):.0f}km{target_suffix}"
+        step = make_step(1, 8, "main", 3, "distance", float(distance_km) * 1000, target)
+        est = int(float(distance_km) * 1000 / 8.0)  # ~30 km/h estimate
+    else:
+        print("  SKIP: cycling requires duration_min or distance_km", file=sys.stderr)
+        return None
+
+    return {"name": name, "steps": [step], "estimated_secs": est, "sport": _cycling_sport()}
 
 
 def _easy_workout(s: dict) -> dict:
