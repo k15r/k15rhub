@@ -536,11 +536,11 @@ def exercise_step(order: int, ex: dict, child_step_id: int = 1) -> dict | None:
             return None
 
     reps_str = reps.strip()
-    # Warn about per-side notation — these must be split into two explicit exercises in the YAML.
+    # Warn and note if per-side notation — caller handles the split.
     if "/" in reps_str.lower():
         label = name or exercise_name.lower()
-        print(f"  WARN: {label!r} reps={reps_str!r} contains '/' — split into two explicit "
-              f"exercises (e.g. 'links'/'rechts') instead of using per-side notation.",
+        print(f"  WARN: {label!r} reps={reps_str!r} contains '/' — auto-splitting into "
+              f"two exercises (links/rechts). Use explicit exercises in YAML to avoid this.",
               file=sys.stderr)
     time_secs = _parse_reps_time_secs(reps_str)
     is_numeric = reps_str.isdigit()
@@ -600,6 +600,23 @@ def _parse_pause_secs(pause_val) -> float | None:
 _AUTO_INTER_EXERCISE_PAUSE_SECS = 15.0
 
 
+def _expand_per_side(item: dict) -> list[dict]:
+    """If an exercise item has per-side reps notation (e.g. '10/Seite', '30 s/Seite'),
+    expand it into [left_item, pause_lap, right_item]. Otherwise return [item] unchanged.
+    """
+    if "exercise" not in item:
+        return [item]
+    reps_str = str(item.get("reps", "")).strip()
+    if "/" not in reps_str.lower():
+        return [item]
+    # Strip the '/...' suffix to get the per-side value
+    per_side_reps = reps_str.split("/")[0].strip()
+    name = item.get("name", "")
+    left = {**item, "reps": per_side_reps, "name": f"{name} links".strip()}
+    right = {**item, "reps": per_side_reps, "name": f"{name} rechts".strip()}
+    return [left, {"pause": "lap"}, right]
+
+
 def _next_item_has_pause(items: list, current_index: int) -> bool:
     """Return True if the item immediately after current_index is an explicit pause."""
     next_index = current_index + 1
@@ -624,6 +641,20 @@ def _build_strength_steps(items: list, base_order: int,
     steps = []
     order = base_order
     inside_group = child_step_id > 0
+
+    # Expand per-side exercises before processing so index-based look-ahead works correctly.
+    expanded_items = []
+    for item in items:
+        if "group" in item:
+            # Recursively expand inside groups too, but leave the group wrapper intact.
+            g = item["group"]
+            inner = []
+            for inner_item in g.get("steps", []):
+                inner.extend(_expand_per_side(inner_item))
+            expanded_items.append({"group": {**g, "steps": inner}})
+        else:
+            expanded_items.extend(_expand_per_side(item))
+    items = expanded_items
 
     for idx, item in enumerate(items):
         if "exercise" in item:

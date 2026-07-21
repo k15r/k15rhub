@@ -569,7 +569,7 @@ strength:
 | `"30 s"` / `"30s"` / `"1:30"` | Timed — watch counts down automatically; no manual lap needed |
 | `"max"` or any other text | Lap-button — athlete presses lap when done |
 
-**Per-side exercises** (e.g. side plank, single-leg deadlift): do NOT use `reps: "10/Seite"` or similar slash notation — it will produce a warning and fall back to lap-button. Instead, write two explicit exercises, one per side:
+**Per-side exercises** (e.g. side plank, single-leg deadlift): prefer explicit two-exercise notation in the YAML. If you use slash notation (`reps: "30 s/Seite"`), the upload script will auto-split into links/rechts with a lap-pause between them and print a warning. Either form works, but explicit is clearer:
 
 ```yaml
 - exercise: true

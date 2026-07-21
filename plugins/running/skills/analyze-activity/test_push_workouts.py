@@ -49,6 +49,7 @@ build_workout_payload = _mod.build_workout_payload
 exercise_step       = _mod.exercise_step
 _build_strength_steps = _mod._build_strength_steps
 power_zone_target   = _mod.power_zone_target
+_expand_per_side      = _mod._expand_per_side
 _parse_reps_time_secs = _mod._parse_reps_time_secs
 
 
@@ -845,6 +846,45 @@ class TestPowerZoneTarget:
         t = power_zone_target("150–200")
         assert t["targetValueOne"] == 150
         assert t["targetValueTwo"] == 200
+
+
+class TestExpandPerSide:
+    def test_no_split_for_normal_reps(self):
+        item = {**_EX_CLAM, "reps": "15"}
+        assert _expand_per_side(item) == [item]
+
+    def test_splits_into_three_items(self):
+        item = {**_EX_CLAM, "name": "Clamshells", "reps": "10/Seite"}
+        result = _expand_per_side(item)
+        assert len(result) == 3
+        assert result[1] == {"pause": "lap"}
+
+    def test_left_right_names(self):
+        item = {**_EX_CLAM, "name": "Clamshells", "reps": "10/Seite"}
+        result = _expand_per_side(item)
+        assert result[0]["name"] == "Clamshells links"
+        assert result[2]["name"] == "Clamshells rechts"
+
+    def test_per_side_reps_stripped(self):
+        item = {**_EX_CLAM, "name": "Side Plank", "reps": "30 s/Seite"}
+        result = _expand_per_side(item)
+        assert result[0]["reps"] == "30 s"
+        assert result[2]["reps"] == "30 s"
+
+    def test_non_exercise_item_unchanged(self):
+        item = {"pause": "lap"}
+        assert _expand_per_side(item) == [item]
+
+    def test_per_side_in_group_expands(self):
+        items = [{"group": {"rounds": 3, "rest": "lap",
+                            "steps": [{**_EX_CLAM, "name": "Side Plank", "reps": "30 s/Seite"}]}}]
+        steps, _ = _build_strength_steps(items, base_order=1)
+        inner = steps[0]["workoutSteps"]
+        # links + auto-15s + lap-pause + rechts + auto-15s + between-round-rest
+        interval_steps = [s for s in inner if s.get("stepType", {}).get("stepTypeKey") == "interval"]
+        assert len(interval_steps) == 2
+        assert interval_steps[0]["description"].endswith("links | 30 s")
+        assert interval_steps[1]["description"].endswith("rechts | 30 s")
 
 
 class TestParseRepsTimeSecs:
