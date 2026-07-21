@@ -48,6 +48,7 @@ session_to_workout  = _mod.session_to_workout
 build_workout_payload = _mod.build_workout_payload
 exercise_step       = _mod.exercise_step
 _build_strength_steps = _mod._build_strength_steps
+_parse_reps_time_secs = _mod._parse_reps_time_secs
 
 
 # ---------------------------------------------------------------------------
@@ -586,8 +587,8 @@ class TestCircuitWorkout:
         s = first(self._session())
         rg = next(st for st in s["steps"] if st.get("type") == "RepeatGroupDTO")
         inner = rg["workoutSteps"]
-        # clam + pause + wade + between-round rest = 4 steps
-        assert len(inner) == 4
+        # clam + explicit-lap-pause + wade + auto-15s-pause + between-round rest = 5
+        assert len(inner) == 5
         interval_steps = [st for st in inner if st.get("stepType", {}).get("stepTypeKey") == "interval"]
         assert len(interval_steps) == 2
 
@@ -604,9 +605,9 @@ class TestCircuitWorkout:
         rg = next(st for st in s["steps"] if st.get("type") == "RepeatGroupDTO")
         timed = [st for st in rg["workoutSteps"]
                  if st.get("stepType", {}).get("stepTypeKey") == "rest"
-                 and st.get("endCondition", {}).get("conditionTypeKey") == "time"]
+                 and st.get("endCondition", {}).get("conditionTypeKey") == "time"
+                 and st.get("endConditionValue") == 30.0]
         assert len(timed) == 1
-        assert timed[0]["endConditionValue"] == 30.0
 
 
 class TestBuildStrengthSteps:
@@ -637,6 +638,51 @@ class TestBuildStrengthSteps:
         assert steps[0]["stepType"]["stepTypeKey"] == "interval"
         assert steps[1]["stepType"]["stepTypeKey"] == "rest"
         assert steps[2]["stepType"]["stepTypeKey"] == "interval"
+
+    def test_auto_pause_inserted_between_exercises_in_group(self):
+        # Two exercises inside a group with no explicit pause between them.
+        items = [{"group": {"rounds": 2, "steps": [_EX_CLAM, _EX_WADE]}}]
+        steps, _ = _build_strength_steps(items, base_order=1)
+        inner = steps[0]["workoutSteps"]
+        # clam + auto-15s-pause + wade + auto-15s-pause (last item, no between-round rest)
+        assert len(inner) == 4
+        auto_pauses = [st for st in inner
+                       if st.get("stepType", {}).get("stepTypeKey") == "rest"
+                       and st.get("endConditionValue") == 15.0]
+        assert len(auto_pauses) == 2
+
+    def test_no_auto_pause_when_explicit_pause_follows(self):
+        # Explicit pause after clam — no auto-pause should be inserted before it.
+        items = [{"group": {"rounds": 2, "steps": [_EX_CLAM, {"pause": "30s"}, _EX_WADE]}}]
+        steps, _ = _build_strength_steps(items, base_order=1)
+        inner = steps[0]["workoutSteps"]
+        # clam + explicit-30s-pause + wade + auto-15s-pause (last item)
+        assert len(inner) == 4
+        explicit_pause = inner[1]
+        assert explicit_pause["endConditionValue"] == 30.0
+
+    def test_auto_pause_not_inserted_at_top_level(self):
+        # At top level (child_step_id=0), no auto-pause between exercises.
+        items = [_EX_CLAM, _EX_WADE]
+        steps, _ = _build_strength_steps(items, base_order=1, child_step_id=0)
+        assert len(steps) == 2
+
+
+class TestParseRepsTimeSecs:
+    def test_seconds_with_space(self):
+        assert _parse_reps_time_secs("30 s") == 30.0
+
+    def test_seconds_no_space(self):
+        assert _parse_reps_time_secs("45s") == 45.0
+
+    def test_mmss_format(self):
+        assert _parse_reps_time_secs("1:30") == 90.0
+
+    def test_numeric_returns_none(self):
+        assert _parse_reps_time_secs("15") is None
+
+    def test_word_returns_none(self):
+        assert _parse_reps_time_secs("max") is None
 
 
 
@@ -728,8 +774,23 @@ class TestExerciseStep:
         assert step["endConditionValue"] == 15.0
 
     def test_non_numeric_reps_sets_lap_button(self):
-        step = exercise_step(1, self._ex(reps="30 s"))
+        step = exercise_step(1, self._ex(reps="max"))
         assert step["endCondition"]["conditionTypeKey"] == "lap.button"
+
+    def test_time_reps_sets_timed_end_condition(self):
+        step = exercise_step(1, self._ex(reps="30 s"))
+        assert step["endCondition"]["conditionTypeKey"] == "time"
+        assert step["endConditionValue"] == 30.0
+
+    def test_time_reps_seconds_suffix(self):
+        step = exercise_step(1, self._ex(reps="45s"))
+        assert step["endCondition"]["conditionTypeKey"] == "time"
+        assert step["endConditionValue"] == 45.0
+
+    def test_time_reps_mmss_format(self):
+        step = exercise_step(1, self._ex(reps="1:30"))
+        assert step["endCondition"]["conditionTypeKey"] == "time"
+        assert step["endConditionValue"] == 90.0
 
     def test_description_includes_name_reps_notes(self):
         step = exercise_step(1, self._ex(notes="langsam"))

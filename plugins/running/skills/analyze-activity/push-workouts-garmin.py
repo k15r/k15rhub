@@ -469,6 +469,28 @@ def _strength_rest_step(order: int, child_step_id: int, duration_secs: float | N
     }
 
 
+def _parse_reps_time_secs(reps_str: str) -> float | None:
+    """If reps_str encodes a duration (e.g. '30s', '30 s', '1:30'), return seconds; else None."""
+    s = reps_str.strip().lower()
+    # Strip trailing 's' / 'sec' / 'sek' to get a plain number
+    for suffix in ("sek", "sec", "s"):
+        if s.endswith(suffix):
+            candidate = s[: -len(suffix)].strip()
+            try:
+                return float(candidate)
+            except ValueError:
+                pass
+    # MM:SS format
+    if ":" in s:
+        parts = s.split(":")
+        if len(parts) == 2:
+            try:
+                return int(parts[0]) * 60 + int(parts[1])
+            except ValueError:
+                pass
+    return None
+
+
 def exercise_step(order: int, ex: dict, child_step_id: int = 1) -> dict | None:
     """Build a single strength interval step from an exercise dict.
 
@@ -499,7 +521,16 @@ def exercise_step(order: int, ex: dict, child_step_id: int = 1) -> dict | None:
             return None
 
     reps_str = reps.strip()
+    time_secs = _parse_reps_time_secs(reps_str)
     is_numeric = reps_str.isdigit()
+
+    if time_secs is not None:
+        cond_id, cond_key, cond_value = 2, "time", time_secs
+    elif is_numeric:
+        cond_id, cond_key, cond_value = 10, "reps", float(reps_str)
+    else:
+        cond_id, cond_key, cond_value = 1, "lap.button", 0.0
+
     parts = [name, reps_str] if name else [exercise_name.lower(), reps_str]
     if notes:
         parts.append(notes)
@@ -511,12 +542,12 @@ def exercise_step(order: int, ex: dict, child_step_id: int = 1) -> dict | None:
         "stepType": {"stepTypeId": 3, "stepTypeKey": "interval", "displayOrder": 3},
         "childStepId": child_step_id,
         "endCondition": {
-            "conditionTypeId": 10 if is_numeric else 1,
-            "conditionTypeKey": "reps" if is_numeric else "lap.button",
-            "displayOrder": 10 if is_numeric else 1,
+            "conditionTypeId": cond_id,
+            "conditionTypeKey": cond_key,
+            "displayOrder": cond_id,
             "displayable": True,
         },
-        "endConditionValue": float(reps_str) if is_numeric else 0.0,
+        "endConditionValue": cond_value,
         "targetType": no_target()["targetType"],
         "targetValueOne": None,
         "targetValueTwo": None,
@@ -548,6 +579,15 @@ def _parse_pause_secs(pause_val) -> float | None:
         return None
 
 
+_AUTO_INTER_EXERCISE_PAUSE_SECS = 15.0
+
+
+def _next_item_has_pause(items: list, current_index: int) -> bool:
+    """Return True if the item immediately after current_index is an explicit pause."""
+    next_index = current_index + 1
+    return next_index < len(items) and "pause" in items[next_index]
+
+
 def _build_strength_steps(items: list, base_order: int,
                            child_step_id: int = 0) -> tuple[list, int]:
     """Recursively build Garmin step list from the new strength schema.
@@ -557,19 +597,29 @@ def _build_strength_steps(items: list, base_order: int,
       - {pause: <duration|"lap">}
       - {group: {rounds: N, rest: <duration|"lap">, steps: [...]}}
 
+    Inside a group (child_step_id > 0), a 15 s rest is automatically inserted after
+    each exercise unless the next item is already an explicit pause.
+
     Returns (steps, next_order).
     child_step_id: the childStepId to stamp on steps inside a repeat group (0 at top level).
     """
     steps = []
     order = base_order
+    inside_group = child_step_id > 0
 
-    for item in items:
+    for idx, item in enumerate(items):
         if "exercise" in item:
             # Treat the item itself as the exercise dict (garmin_category etc. at same level)
             step = exercise_step(order, item, child_step_id=child_step_id)
             if step:
                 steps.append(step)
                 order += 1
+                # Auto-insert a 15 s transition pause between exercises inside a group,
+                # but only when the plan doesn't already place an explicit pause next.
+                if inside_group and not _next_item_has_pause(items, idx):
+                    steps.append(_strength_rest_step(order, child_step_id=child_step_id,
+                                                     duration_secs=_AUTO_INTER_EXERCISE_PAUSE_SECS))
+                    order += 1
 
         elif "pause" in item:
             secs = _parse_pause_secs(item["pause"])
