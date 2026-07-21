@@ -487,7 +487,7 @@ dates:
 sessions:
   - day: <Mo|Di|Mi|Do|Fr|Sa|So>
     date: "YYYY-MM-DD"
-    type: <rest|easy|tempo|long_run|intervals|race|strength>
+    type: <rest|easy|tempo|long_run|intervals|race|strength|cycling>
     # type-specific fields (see below)
     goal: "<one sentence — why this session>"  # omit for rest
     optional: true   # only when session is optional
@@ -505,7 +505,8 @@ Session type fields:
 | `long_run` | `distance_km` OR `duration_min` (one required; both may be set for display — `distance_km` takes priority for Garmin upload), and one of: `pace_range`, `hr_range`; if structured: add `with_efforts: true`, `easy_pace`, `effort_pace`, `effort_reps`, `effort_km`, `recovery_km` (structured requires `distance_km`) |
 | `intervals` | `reps`, (`distance_m` OR `effort_min`), and one of: `pace_range`, `hr_range`; `recovery_type: distance\|time`, then `recovery_m`, `recovery_min`, or `recovery_sec`; optional `warmup_min`, `cooldown_min`, `label` |
 | `race` | `distance_km`, `goal_time` |
-| `strength` | `focus`, `duration_min`, `exercises` (list — see strength block below); no running fields |
+| `strength` | `focus`, `duration_min`, `steps` (list — see strength block below); no running fields |
+| `cycling` | `duration_min` OR `distance_km` (one required); optional `hr_range` or `power_range` (watts, e.g. `"150–200"`); `power_range` takes priority over `hr_range` |
 
 Any session type except `rest` and `race` accepts an optional `strides` block:
 
@@ -526,9 +527,14 @@ strength:
     - exercise: true
       garmin_category: "HIP_STABILITY"
       garmin_exercise: "DEAD_BUG"
-      name: "Deadbugs"
-      reps: "10/Seite"
+      name: "Deadbugs links"
+      reps: "10"
       notes: "<optional coaching cue shown on the watch>"
+    - exercise: true
+      garmin_category: "HIP_STABILITY"
+      garmin_exercise: "DEAD_BUG"
+      name: "Deadbugs rechts"
+      reps: "10"
     - pause: lap          # lap-button rest (athlete decides when ready)
     - group:
         rounds: 3
@@ -555,9 +561,34 @@ strength:
 | `pause: <value>` | Rest step | Value: `"lap"` for lap-button, or seconds as string `"30"` / `"30s"` |
 | `group:` | Repeat group (circuit or straight set) | `rounds`, `steps`; optional `rest` (between-round rest, same format as pause) |
 
+**`reps` values:**
+
+| Value | Effect on watch |
+| --- | --- |
+| `"12"` | Rep counter — watch counts down 12 reps, athlete presses lap when done |
+| `"30 s"` / `"30s"` / `"1:30"` | Timed — watch counts down automatically; no manual lap needed |
+| `"max"` or any other text | Lap-button — athlete presses lap when done |
+
+**Per-side exercises** (e.g. side plank, single-leg deadlift): do NOT use `reps: "10/Seite"` or similar slash notation — it will produce a warning and fall back to lap-button. Instead, write two explicit exercises, one per side:
+
+```yaml
+- exercise: true
+  garmin_category: PLANK
+  garmin_exercise: SIDE_PLANK
+  name: Side Plank links
+  reps: "30 s"
+- exercise: true
+  garmin_category: PLANK
+  garmin_exercise: SIDE_PLANK
+  name: Side Plank rechts
+  reps: "30 s"
+```
+
+**Auto-pause between exercises in a group:** A 15 s rest is automatically inserted after each exercise inside a group, so the athlete has time to move to the next position. To suppress it for a specific transition, add an explicit `pause` immediately after the exercise — the auto-pause is skipped when the next item is already a pause.
+
 **Circuit vs straight set:**
 
-- **Circuit** (all exercises in one round, repeat N times): put all exercises inside one `group`. Add `pause: lap` between exercises, and `rest: "60"` (or similar) between rounds.
+- **Circuit** (all exercises in one round, repeat N times): put all exercises inside one `group`. Add explicit `pause: lap` (or timed pause) between exercises where needed; `rest` controls the between-round break.
 - **Straight set** (all sets of one exercise, then move on): wrap each exercise in its own `group` with the desired `rounds`.
 - **Mixed**: use multiple top-level items — some single exercises, some groups.
 
@@ -587,7 +618,7 @@ steps:
           reps: "12"
 ```
 
-Circuit (3 rounds of: Liegestütz → pause → Plank → pause, then 60 s rest between rounds):
+Circuit (3 rounds of: Liegestütz → Plank, 60 s rest between rounds):
 
 ```yaml
 steps:
@@ -600,13 +631,13 @@ steps:
           garmin_exercise: push_up
           name: Liegestütz
           reps: "12"
-        - pause: lap
+        - pause: lap        # explicit pause suppresses the auto-15s here
         - exercise: true
           garmin_category: PLANK
           garmin_exercise: plank
           name: Plank
           reps: "30 s"
-        - pause: lap
+        # auto-15s pause inserted here before the between-round rest
 ```
 
 Omit `strength` when no strength work is planned for that day.
