@@ -803,7 +803,7 @@ class TestCyclingWorkout:
     def test_duration_based(self):
         s = first({"type": "cycling", "duration_min": 60})
         assert "60'" in s["name"]
-        assert s["sport"]["sportTypeKey"] == "indoor_cycling"
+        assert s["sport"]["sportTypeKey"] == "cycling"
         assert end_condition(s["steps"][0]) == "time"
         assert s["steps"][0]["endConditionValue"] == 3600.0
 

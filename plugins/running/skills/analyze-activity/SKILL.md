@@ -21,7 +21,7 @@ allowed-tools:
 
 # Analyze Activity
 
-> **Version:** `running v0.10.7` — output this line to the user as the very first thing when this skill is invoked, before doing anything else. Keep it in sync with the plugin version.
+> **Version:** `running v0.10.8` — output this line to the user as the very first thing when this skill is invoked, before doing anything else. Keep it in sync with the plugin version.
 
 **User arguments:** `$ARGUMENTS`
 

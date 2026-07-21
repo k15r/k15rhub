@@ -272,7 +272,7 @@ def _running_sport() -> dict:
 
 
 def _cycling_sport() -> dict:
-    return {"sportTypeId": 25, "sportTypeKey": "indoor_cycling", "displayOrder": 25}
+    return {"sportTypeId": 2, "sportTypeKey": "cycling", "displayOrder": 2}
 
 
 def _strength_sport() -> dict:
