@@ -589,8 +589,8 @@ class TestCircuitWorkout:
         s = first(self._session())
         rg = next(st for st in s["steps"] if st.get("type") == "RepeatGroupDTO")
         inner = rg["workoutSteps"]
-        # clam + explicit-lap-pause + wade + auto-15s-pause + between-round rest = 5
-        assert len(inner) == 5
+        # clam + explicit-lap-pause + wade + between-round rest = 4
+        assert len(inner) == 4
         interval_steps = [st for st in inner if st.get("stepType", {}).get("stepTypeKey") == "interval"]
         assert len(interval_steps) == 2
 
@@ -646,20 +646,20 @@ class TestBuildStrengthSteps:
         items = [{"group": {"rounds": 2, "steps": [_EX_CLAM, _EX_WADE]}}]
         steps, _ = _build_strength_steps(items, base_order=1)
         inner = steps[0]["workoutSteps"]
-        # clam + auto-15s-pause + wade + auto-15s-pause (last item, no between-round rest)
-        assert len(inner) == 4
+        # clam + auto-15s-pause + wade (last, no auto-pause) = 3
+        assert len(inner) == 3
         auto_pauses = [st for st in inner
                        if st.get("stepType", {}).get("stepTypeKey") == "rest"
                        and st.get("endConditionValue") == 15.0]
-        assert len(auto_pauses) == 2
+        assert len(auto_pauses) == 1
 
     def test_no_auto_pause_when_explicit_pause_follows(self):
         # Explicit pause after clam — no auto-pause should be inserted before it.
         items = [{"group": {"rounds": 2, "steps": [_EX_CLAM, {"pause": "30s"}, _EX_WADE]}}]
         steps, _ = _build_strength_steps(items, base_order=1)
         inner = steps[0]["workoutSteps"]
-        # clam + explicit-30s-pause + wade + auto-15s-pause (last item)
-        assert len(inner) == 4
+        # clam + explicit-30s-pause + wade (last) = 3
+        assert len(inner) == 3
         explicit_pause = inner[1]
         assert explicit_pause["endConditionValue"] == 30.0
 

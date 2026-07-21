@@ -664,8 +664,10 @@ def _build_strength_steps(items: list, base_order: int,
                 steps.append(step)
                 order += 1
                 # Auto-insert a 15 s transition pause between exercises inside a group,
-                # but only when the plan doesn't already place an explicit pause next.
-                if inside_group and not _next_item_has_pause(items, idx):
+                # but only when the plan doesn't already place an explicit pause next,
+                # and not after the last exercise (the between-round rest serves that role).
+                is_last = idx == len(items) - 1
+                if inside_group and not is_last and not _next_item_has_pause(items, idx):
                     steps.append(_strength_rest_step(order, child_step_id=child_step_id,
                                                      duration_secs=_AUTO_INTER_EXERCISE_PAUSE_SECS))
                     order += 1
