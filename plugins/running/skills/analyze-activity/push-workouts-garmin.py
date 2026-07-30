@@ -1138,6 +1138,93 @@ def delete_date_workouts(garmin, tokenstore: str, date_str: str) -> None:
     untrack_date(tokenstore, date_str)
 
 
+def _fmt_duration(secs: int) -> str:
+    if secs < 60:
+        return f"{secs}s"
+    m, s = divmod(secs, 60)
+    return f"{m}m{s:02d}s" if s else f"{m}m"
+
+
+def _step_label(step: dict) -> str:
+    step_type_key = (step.get("stepType") or {}).get("stepTypeKey", "interval")
+    if step_type_key == "warmup":
+        return "Aufwärmen"
+    if step_type_key == "cooldown":
+        return "Abkühlen"
+    if step_type_key in ("rest", "recovery"):
+        return "Pause"
+    desc = step.get("description") or ""
+    if desc:
+        return desc.split("|")[0].strip()
+    cat = step.get("category", "").lower()
+    ex = step.get("exerciseName", "").lower()
+    return f"{cat}/{ex}" if cat else ex or "Training"
+
+
+def _step_condition(step: dict) -> str:
+    ec = step.get("endCondition", {})
+    key = ec.get("conditionTypeKey", "")
+    val = step.get("endConditionValue")
+    if key == "lap.button" or val is None:
+        return "Lap-Taste drücken"
+    if key == "time":
+        return _fmt_duration(int(val))
+    if key == "reps":
+        return f"{int(val)} Wdh."
+    if key == "distance":
+        m_val = int(val)
+        return f"{m_val/1000:.1f} km" if m_val >= 1000 else f"{m_val} m"
+    return f"{key}={val}"
+
+
+_W = 44  # card inner width
+
+
+def _card(title: str, subtitle: str, is_rest: bool = False, indent: str = "") -> list[str]:
+    """Render a Garmin-style step card with a colored left bar."""
+    bar = "░" if is_rest else "▌"
+    pad = _W - 2  # space for bar + space
+    sep = indent + bar + "─" * (_W + 1)
+    top = indent + bar + " " + title[:pad].ljust(pad)
+    sub = indent + bar + "   " + subtitle[:pad - 2].ljust(pad - 2)
+    return [sep, top, sub, sep]
+
+
+def _render_steps(steps: list[dict], indent: str = "") -> list[str]:
+    out = []
+    for step in steps:
+        if step.get("type") == "RepeatGroupDTO":
+            n = step.get("numberOfIterations", "?")
+            out.append(indent + f"↺  {n} Sätze")
+            out.extend(_render_steps(step.get("workoutSteps", []), indent + "   "))
+        else:
+            step_type_key = (step.get("stepType") or {}).get("stepTypeKey", "interval")
+            is_rest = step_type_key in ("rest", "recovery")
+            label = _step_label(step)
+            cond = _step_condition(step)
+            step_type_display = "Pause" if is_rest else "Training"
+            out.extend(_card(label, f"{cond}  ·  {step_type_display}", is_rest=is_rest, indent=indent))
+        out.append(indent + " " * (_W // 2) + "↓")
+    if out and out[-1].strip() == "↓":
+        out.pop()
+    return out
+
+
+def _print_workout_human(date_str: str, payload: dict) -> None:
+    """Print one workout payload as ASCII cards mimicking Garmin's web UI."""
+    w = payload.get("workout", payload)
+    name = w.get("workoutName", w.get("name", "?"))
+    sport_type = (w.get("sportType") or {}).get("sportTypeKey", "")
+    est_min = w.get("estimatedDurationInSecs", 0) // 60
+    steps = (w.get("workoutSegments") or [{}])[0].get("workoutSteps", w.get("workoutSteps", []))
+
+    print(f"{date_str}  {name}  [{sport_type}, ~{est_min} min]")
+    print("=" * (_W + 2))
+    for line in _render_steps(steps):
+        print(line)
+    print()
+
+
 def dry_run_week(yaml_path: Path, fmt: str = "table") -> None:
     """Print what would be uploaded for a week without touching Garmin."""
     data = load_week_yaml(yaml_path)
@@ -1165,22 +1252,8 @@ def dry_run_week(yaml_path: Path, fmt: str = "table") -> None:
     elif fmt == "yaml":
         print(yaml.dump(payloads, allow_unicode=True, sort_keys=False, default_flow_style=False))
     else:
-        # tabular — human-readable summary
-        col_w = [10, 35, 10, 7]
-        header = ["DATE", "NAME", "EST_MIN", "STEPS"]
-        sep = "| " + " | ".join("-" * w for w in col_w) + " |"
-
-        def fmt_row(cells):
-            return "| " + " | ".join(str(c).ljust(w) for c, w in zip(cells, col_w)) + " |"
-
-        print(fmt_row(header))
-        print(sep)
-        for r in rows:
-            print(fmt_row([r["date"], r["name"], r["estimated_min"], r["steps"]]))
-
-        # Also print the full payload(s) as JSON so step details are visible
-        print()
-        print(json.dumps(payloads, indent=2))
+        for entry in payloads:
+            _print_workout_human(entry["date"], entry["workout"])
 
 
 def process_week(garmin, tokenstore: str, yaml_path: Path,
