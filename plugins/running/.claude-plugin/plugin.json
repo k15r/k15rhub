@@ -1,6 +1,6 @@
 {
   "name": "running",
-  "version": "0.10.12",
+  "version": "0.10.13",
   "description": "Analyze runs from Runalyze and manage marathon/half-marathon training plans in Obsidian.",
   "author": {
     "name": "k15r"

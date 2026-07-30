@@ -919,13 +919,21 @@ def _cycling_workout(s: dict) -> dict | None:
 
 def _easy_workout(s: dict) -> dict:
     subtype = s.get("subtype", "jogging").capitalize()
-    dur_sec = parse_duration_sec(s["duration_min"], "m")
-    duration_min = int(dur_sec // 60)
     target = resolve_target(s)
     suffix = step_name_suffix(s)
-    name = f"{subtype} {duration_min}'{suffix}"
-    steps = [main_time(1, dur_sec, target)]
-    return {"name": name, "steps": steps, "estimated_secs": int(dur_sec)}
+    dist_km = s.get("distance_km")
+    if dist_km is not None:
+        dist_km = float(dist_km)
+        mps = parse_pace_mps(s["pace_range"].split("–")[0]) if s.get("pace_range") else (1000.0 / 330)
+        est = int(dist_km * 1000 / mps)
+        name = f"{subtype} {dist_km:.0f}km{suffix}"
+        steps = [main_distance(1, dist_km * 1000, target)]
+    else:
+        dur_sec = parse_duration_sec(s["duration_min"], "m")
+        est = int(dur_sec)
+        name = f"{subtype} {int(dur_sec // 60)}'{suffix}"
+        steps = [main_time(1, dur_sec, target)]
+    return {"name": name, "steps": steps, "estimated_secs": est}
 
 
 def _tempo_workout(s: dict) -> dict:
