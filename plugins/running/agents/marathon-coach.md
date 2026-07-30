@@ -503,7 +503,7 @@ Session type fields:
 | `easy` | `subtype: jogging\|dauerlauf`, `duration_min`, and one of: `pace_range`, `hr_range`, or neither |
 | `tempo` | `distance_km` OR `effort_min` (one required), and one of: `pace_range`, `hr_range`; optional `warmup_min`, `cooldown_min` |
 | `long_run` | `distance_km` OR `duration_min` (one required; both may be set for display — `distance_km` takes priority for Garmin upload), and one of: `pace_range`, `hr_range`; if structured: add `with_efforts: true`, `easy_pace`, `effort_pace`, `effort_reps`, `effort_km`, `recovery_km` (structured requires `distance_km`) |
-| `intervals` | `reps`, (`distance_m` OR `effort_min`), and one of: `pace_range`, `hr_range`; `recovery_type: distance\|time`, then `recovery_m`, `recovery_min`, or `recovery_sec`; optional `warmup_min`, `cooldown_min`, `label` |
+| `intervals` | `reps`, (`distance_m` OR `effort_min`), and one of: `pace_range`, `hr_range`; optional `recovery` (duration string, e.g. `"1m30s"`, `"90s"`, `"2m"` — default 90 s) or `recovery_type: distance` with `recovery_m`; optional `warmup_min`, `cooldown_min`, `label` |
 | `race` | `distance_km`, `goal_time` |
 | `strength` | `focus`, `duration_min`, `steps` (list — see strength block below); no running fields |
 | `cycling` | `duration_min` OR `distance_km` (one required); optional `hr_range` or `power_range` (watts, e.g. `"150–200"`); `power_range` takes priority over `hr_range` |

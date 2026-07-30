@@ -144,6 +144,35 @@ def untrack_date(tokenstore: str, date_str: str) -> None:
 # Pace utilities
 # ---------------------------------------------------------------------------
 
+def parse_duration_sec(value, default_unit: str = "s") -> float | None:
+    """Parse a duration value into seconds.
+
+    Accepts: None, int/float, or strings like '90', '90s', '1m', '1.5m',
+    '1m30s', '1:30' (mm:ss).  bare numbers use default_unit ('s' or 'm').
+    Returns None if value is None or evaluates to zero/negative.
+    """
+    if value is None:
+        return None
+    s = str(value).strip().lower()
+    if not s:
+        return None
+    # mm:ss
+    if ":" in s:
+        parts = s.split(":", 1)
+        result = int(parts[0]) * 60 + float(parts[1])
+    # combined e.g. 1m30s or 1m or 30s
+    elif "m" in s or "s" in s:
+        import re as _re
+        m = _re.fullmatch(r"(?:(\d+(?:\.\d+)?)m)?(?:(\d+(?:\.\d+)?)s)?", s)
+        if not m or not (m.group(1) or m.group(2)):
+            raise ValueError(f"Cannot parse duration: {value!r}")
+        result = float(m.group(1) or 0) * 60 + float(m.group(2) or 0)
+    else:
+        raw = float(s)
+        result = raw * 60 if default_unit == "m" else raw
+    return result if result > 0 else None
+
+
 def parse_pace_mps(pace_str: str) -> float:
     """Convert 'M:SS' to metres per second."""
     pace_str = pace_str.strip()
@@ -873,9 +902,10 @@ def _cycling_workout(s: dict) -> dict | None:
         target_suffix = f"@{s['hr_range']}bpm"
 
     if duration_min is not None:
-        name = f"Rad {int(duration_min)}'{target_suffix}"
-        step = make_step(1, 8, "main", 2, "time", float(duration_min) * 60, target)
-        est = int(float(duration_min) * 60)
+        dur_sec = parse_duration_sec(duration_min, "m")
+        name = f"Rad {int(dur_sec // 60)}'{target_suffix}"
+        step = make_step(1, 8, "main", 2, "time", dur_sec, target)
+        est = int(dur_sec)
     elif distance_km is not None:
         name = f"Rad {float(distance_km):.0f}km{target_suffix}"
         step = make_step(1, 8, "main", 3, "distance", float(distance_km) * 1000, target)
@@ -889,12 +919,13 @@ def _cycling_workout(s: dict) -> dict | None:
 
 def _easy_workout(s: dict) -> dict:
     subtype = s.get("subtype", "jogging").capitalize()
-    duration_min = int(s["duration_min"])
+    dur_sec = parse_duration_sec(s["duration_min"], "m")
+    duration_min = int(dur_sec // 60)
     target = resolve_target(s)
     suffix = step_name_suffix(s)
     name = f"{subtype} {duration_min}'{suffix}"
-    steps = [main_time(1, duration_min * 60, target)]
-    return {"name": name, "steps": steps, "estimated_secs": duration_min * 60}
+    steps = [main_time(1, dur_sec, target)]
+    return {"name": name, "steps": steps, "estimated_secs": int(dur_sec)}
 
 
 def _tempo_workout(s: dict) -> dict:
@@ -906,8 +937,8 @@ def _tempo_workout(s: dict) -> dict:
     easy = easy_pace_for(s["pace_range"]) if s.get("pace_range") else no_target()
     suffix = step_name_suffix(s)
 
-    wu_secs = float(warmup_min) * 60 if warmup_min else 600
-    cd_secs = float(cooldown_min) * 60 if cooldown_min else 600
+    wu_secs = parse_duration_sec(warmup_min, "m") if warmup_min else 600
+    cd_secs = parse_duration_sec(cooldown_min, "m") if cooldown_min else 600
     wu = warmup_time(1, wu_secs) if warmup_min else warmup_lap(1, easy)
     cd = cooldown_time(3, cd_secs) if cooldown_min else cooldown_lap(3, easy)
 
@@ -918,9 +949,10 @@ def _tempo_workout(s: dict) -> dict:
         est = int(wu_secs + dist_km * 1000 / mps + cd_secs)
         steps = [wu, main_distance(2, dist_km * 1000, target), cd]
     elif effort_min is not None:
-        name = f"Tempo {int(effort_min)}'{suffix}"
-        est = int(wu_secs + float(effort_min) * 60 + cd_secs)
-        steps = [wu, main_time(2, float(effort_min) * 60, target), cd]
+        effort_sec = parse_duration_sec(effort_min, "m")
+        name = f"Tempo {int(effort_sec // 60)}'{suffix}"
+        est = int(wu_secs + effort_sec + cd_secs)
+        steps = [wu, main_time(2, effort_sec, target), cd]
     else:
         print("  SKIP: tempo requires distance_km or effort_min", file=sys.stderr)
         return None
@@ -969,9 +1001,10 @@ def _long_run_workout(s: dict) -> dict:
         mps = parse_pace_mps(s["pace_range"].split("–")[0]) if s.get("pace_range") else 0.05
         est = int(dist_km * 1000 / mps)
     elif duration_min is not None:
-        name = f"Langer DL {int(duration_min)}'{suffix}"
-        steps = [main_time(1, float(duration_min) * 60, target)]
-        est = int(float(duration_min) * 60)
+        dur_sec = parse_duration_sec(duration_min, "m")
+        name = f"Langer DL {int(dur_sec // 60)}'{suffix}"
+        steps = [main_time(1, dur_sec, target)]
+        est = int(dur_sec)
     else:
         print("  SKIP: long_run requires distance_km or duration_min", file=sys.stderr)
         return None
@@ -985,8 +1018,11 @@ def _intervals_workout(s: dict) -> dict:
     effort_min = s.get("effort_min")
     recovery_type = s.get("recovery_type", "time")
     recovery_m = s.get("recovery_m", 400)
-    recovery_min = s.get("recovery_min", 1.5)
-    recovery_sec = s.get("recovery_sec")
+    # 'recovery' is the canonical field (e.g. "1m30s", "90s", "1.5m").
+    # Fall back to legacy recovery_min / recovery_sec for old YAMLs.
+    _rec_raw = s.get("recovery") or s.get("recovery_sec") or s.get("recovery_min")
+    _rec_unit = "m" if (s.get("recovery") is None and s.get("recovery_sec") is None) else "s"
+    recovery_secs = parse_duration_sec(_rec_raw, _rec_unit) if _rec_raw is not None else None
     warmup_min = s.get("warmup_min")
     cooldown_min = s.get("cooldown_min")
     label = s.get("label", "")
@@ -1003,8 +1039,8 @@ def _intervals_workout(s: dict) -> dict:
         mps = parse_pace_mps(s["pace_range"].split("–")[0]) if s.get("pace_range") else 0.05
         interval_sec = dist_m / mps
     elif effort_min is not None:
-        effort_sec = float(effort_min) * 60
-        dist_label = f"{int(effort_min)}'"
+        effort_sec = parse_duration_sec(effort_min, "m")
+        dist_label = f"{int(effort_sec // 60)}'"
         interval_step = make_step(1, 3, "interval", 2, "time", effort_sec, target)
         interval_sec = effort_sec
     else:
@@ -1018,20 +1054,20 @@ def _intervals_workout(s: dict) -> dict:
     name = " ".join(name_parts)
 
     # Recovery step
-    if recovery_sec is not None:
-        rec = recovery_time(2, float(recovery_sec))
-        rec_sec = float(recovery_sec)
+    if recovery_secs is not None:
+        rec = recovery_time(2, recovery_secs)
+        rec_sec = recovery_secs
     elif recovery_type == "distance":
         rec = recovery_distance(2, float(recovery_m))
         rec_sec = float(recovery_m) / 2.5
     else:
-        rec = recovery_time(2, float(recovery_min) * 60)
-        rec_sec = float(recovery_min) * 60
+        rec = recovery_time(2, 90.0)
+        rec_sec = 90.0
 
     rg = repeat_group(2, reps, [interval_step, rec])
 
-    wu_secs = float(warmup_min) * 60 if warmup_min else 600
-    cd_secs = float(cooldown_min) * 60 if cooldown_min else 600
+    wu_secs = parse_duration_sec(warmup_min, "m") if warmup_min else 600
+    cd_secs = parse_duration_sec(cooldown_min, "m") if cooldown_min else 600
     wu = warmup_time(1, wu_secs) if warmup_min else warmup_lap(1, easy)
     cd = cooldown_time(3, cd_secs) if cooldown_min else cooldown_lap(3, easy)
 
