@@ -631,19 +631,25 @@ _AUTO_INTER_EXERCISE_PAUSE_SECS = 15.0
 
 def _expand_per_side(item: dict) -> list[dict]:
     """If an exercise item has per-side reps notation (e.g. '10/Seite', '30 s/Seite'),
-    expand it into [left_item, pause_lap, right_item]. Otherwise return [item] unchanged.
+    expand it into [left_item, right_item], optionally with a pause between sides.
+
+    Add `side_pause: lap` (or a duration like '10s') to the exercise in YAML when the
+    exercise requires repositioning between sides (e.g. Clamshells, Split Squats).
+    Omit it for alternating exercises like Deadbugs or Bird-Dogs.
     """
     if "exercise" not in item:
         return [item]
     reps_str = str(item.get("reps", "")).strip()
     if "/" not in reps_str.lower():
         return [item]
-    # Strip the '/...' suffix to get the per-side value
     per_side_reps = reps_str.split("/")[0].strip()
     name = item.get("name", "")
     left = {**item, "reps": per_side_reps, "name": f"{name} links".strip()}
     right = {**item, "reps": per_side_reps, "name": f"{name} rechts".strip()}
-    return [left, {"pause": "lap"}, right]
+    side_pause = item.get("side_pause")
+    if side_pause is not None:
+        return [left, {"pause": side_pause}, right]
+    return [left, right]
 
 
 def _next_item_has_pause(items: list, current_index: int) -> bool:
