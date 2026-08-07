@@ -20,7 +20,7 @@ allowed-tools:
 
 # Marathon Coach
 
-> **Version:** `running v0.10.14` — output this line to the user as the very first thing when this skill is invoked, before doing anything else. Keep it in sync with the plugin version.
+> **Version:** `running v0.10.15` — output this line to the user as the very first thing when this skill is invoked, before doing anything else. Keep it in sync with the plugin version.
 
 **User arguments:** `$ARGUMENTS`
 

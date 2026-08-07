@@ -507,6 +507,7 @@ Session type fields:
 | `race` | `distance_km`, `goal_time` |
 | `strength` | `focus`, `duration_min`, `steps` (list — see strength block below); no running fields |
 | `cycling` | `duration_min` OR `distance_km` (one required); optional `hr_range` or `power_range` (watts, e.g. `"150–200"`); `power_range` takes priority over `hr_range` |
+| `workout` | `sport`, `name`, `steps` (list — see generic workout block below); optional `estimated_min` (default 60) |
 
 Any session type except `rest` and `race` accepts an optional `strides` block:
 
@@ -641,6 +642,67 @@ steps:
 ```
 
 Omit `strength` when no strength work is planned for that day.
+
+### Generic workout block (`type: workout`)
+
+Use `type: workout` when none of the specialised types (`easy`, `tempo`, `intervals`, `long_run`, `cycling`) fit — e.g. a crescendo run, a swim session, a structured hike. You describe every step explicitly; the upload script translates them 1:1 to Garmin.
+
+**Required fields:** `sport`, `name`, `steps`.
+**Optional:** `estimated_min` (default 60).
+
+**`sport` values:**
+
+| value | Garmin sport |
+| --- | --- |
+| `running` | Running |
+| `cycling` | Cycling |
+| `swimming` | Swimming |
+| `strength_training` | Strength Training |
+| `cardio` | Cardio |
+| `yoga` | Yoga |
+| `hiking` | Hiking |
+| `rowing` | Rowing |
+| `multi_sport` | Multi-Sport |
+
+**Step fields:**
+
+| field | values |
+| --- | --- |
+| `type` | `warmup`, `cooldown`, `main`, `interval`, `recovery`, `rest`, `repeat` |
+| `end` | `lap` · `{time_sec: N}` · `{distance_m: N}` · `{distance_km: N}` |
+| `pace_range` | `"M:SS–M:SS"` (optional) |
+| `hr_range` | `"N–N"` bpm (optional) |
+| `power_range` | `"N–N"` watts (optional) |
+
+For `type: repeat`, use `rounds: N` and a nested `steps` list instead of `end`/target fields.
+
+**Example — Crescendo 18 km:**
+
+```yaml
+type: workout
+sport: running
+name: "Crescendo 18km"
+estimated_min: 105
+steps:
+  - type: warmup
+    end: lap
+  - type: main
+    end: {distance_km: 4}
+    pace_range: "5:30–5:45"
+  - type: main
+    end: {distance_km: 4}
+    pace_range: "5:10–5:25"
+  - type: main
+    end: {distance_km: 4}
+    pace_range: "4:55–5:10"
+  - type: main
+    end: {distance_km: 4}
+    pace_range: "4:40–4:55"
+  - type: cooldown
+    end: lap
+```
+
+
 
 **Migrating existing plans:** Older week YAMLs only have strength described in the markdown `Kraft/Stabi` cell, not in the YAML. Run `garmin migrate strength` to backfill `strength` sub-blocks from the markdown into the YAML. After migration, re-run `/sync-garmin` to upload the new strength workouts.
 

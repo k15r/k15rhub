@@ -308,6 +308,29 @@ def _strength_sport() -> dict:
     return {"sportTypeId": 5, "sportTypeKey": "strength_training", "displayOrder": 5}
 
 
+_SPORT_MAP: dict[str, dict] = {
+    "running":           {"sportTypeId": 1,  "sportTypeKey": "running",           "displayOrder": 1},
+    "cycling":           {"sportTypeId": 2,  "sportTypeKey": "cycling",           "displayOrder": 2},
+    "swimming":          {"sportTypeId": 3,  "sportTypeKey": "swimming",           "displayOrder": 3},
+    "multi_sport":       {"sportTypeId": 4,  "sportTypeKey": "multi_sport",        "displayOrder": 4},
+    "strength_training": {"sportTypeId": 5,  "sportTypeKey": "strength_training",  "displayOrder": 5},
+    "cardio":            {"sportTypeId": 6,  "sportTypeKey": "cardio",             "displayOrder": 6},
+    "yoga":              {"sportTypeId": 11, "sportTypeKey": "yoga",               "displayOrder": 11},
+    "hiking":            {"sportTypeId": 14, "sportTypeKey": "hiking",             "displayOrder": 14},
+    "rowing":            {"sportTypeId": 15, "sportTypeKey": "rowing",             "displayOrder": 15},
+}
+
+
+def _sport_for_key(key: str) -> dict:
+    if key in _SPORT_MAP:
+        return _SPORT_MAP[key]
+    # Allow raw numeric id as fallback: "sport_type_id:7"
+    if key.startswith("sport_type_id:"):
+        sid = int(key.split(":")[1])
+        return {"sportTypeId": sid, "sportTypeKey": key, "displayOrder": sid}
+    raise ValueError(f"Unknown sport key {key!r}. Known: {list(_SPORT_MAP)}")
+
+
 def make_step(order: int, type_id: int, type_key: str,
               cond_id: int, cond_key: int, cond_value: float,
               target: dict) -> dict:
@@ -757,6 +780,151 @@ def _build_strength_steps(items: list, base_order: int,
     return steps, order
 
 
+_STEP_TYPE_MAP = {
+    "warmup":   (1, "warmup"),
+    "cooldown": (2, "cooldown"),
+    "interval": (3, "interval"),
+    "recovery": (4, "recovery"),
+    "rest":     (5, "rest"),
+    "repeat":   (6, "repeat"),
+    "main":     (8, "main"),
+}
+
+_END_COND_MAP = {
+    "lap":        (1, "lap.button",  0.0),
+    "iterations": (7, "iterations",  None),  # value set from rounds
+}
+
+
+def _build_generic_steps(items: list, base_order: int, child_step_id: int = 0) -> tuple[list, int]:
+    """Recursively build Garmin step list from the generic workout steps schema.
+
+    Each item is one of:
+      {type: warmup|cooldown|interval|recovery|rest|main,
+       end: lap | {time_sec: N} | {distance_m: N} | {distance_km: N},
+       pace_range: "M:SS–M:SS",   # optional
+       hr_range: "N–N",           # optional
+       power_range: "N–N"}        # optional
+
+      {type: repeat, rounds: N, steps: [...]}   # nested repeat group
+
+    Returns (steps, next_order).
+    """
+    steps = []
+    order = base_order
+
+    for item in items:
+        step_type = item.get("type", "main")
+
+        if step_type == "repeat":
+            rounds = int(item.get("rounds", 1))
+            inner_items = item.get("steps", [])
+            inner_steps, _ = _build_generic_steps(inner_items, base_order=1, child_step_id=1)
+            if not inner_steps:
+                print("  WARN: repeat group has no steps — skipped", file=sys.stderr)
+                continue
+            rg = {
+                "type": "RepeatGroupDTO",
+                "stepOrder": order,
+                "stepType": {"stepTypeId": 6, "stepTypeKey": "repeat", "displayOrder": 6},
+                "childStepId": child_step_id if child_step_id else 1,
+                "numberOfIterations": rounds,
+                "workoutSteps": inner_steps,
+                "endCondition": {
+                    "conditionTypeId": 7, "conditionTypeKey": "iterations",
+                    "displayOrder": 7, "displayable": False,
+                },
+                "endConditionValue": float(rounds),
+                "skipLastRestStep": False,
+                "smartRepeat": False,
+            }
+            steps.append(rg)
+            order += 1
+            continue
+
+        type_id, type_key = _STEP_TYPE_MAP.get(step_type, (8, step_type))
+
+        # End condition
+        end = item.get("end", "lap")
+        if end == "lap":
+            cond_id, cond_key, cond_val = 1, "lap.button", 0.0
+        elif isinstance(end, dict):
+            if "time_sec" in end:
+                cond_id, cond_key, cond_val = 2, "time", float(end["time_sec"])
+            elif "distance_m" in end:
+                cond_id, cond_key, cond_val = 3, "distance", float(end["distance_m"])
+            elif "distance_km" in end:
+                cond_id, cond_key, cond_val = 3, "distance", float(end["distance_km"]) * 1000
+            else:
+                print(f"  WARN: unknown end condition {end!r} — using lap", file=sys.stderr)
+                cond_id, cond_key, cond_val = 1, "lap.button", 0.0
+        else:
+            print(f"  WARN: unknown end condition {end!r} — using lap", file=sys.stderr)
+            cond_id, cond_key, cond_val = 1, "lap.button", 0.0
+
+        target = resolve_target(item)
+
+        step = {
+            "type": "ExecutableStepDTO",
+            "stepOrder": order,
+            "stepType": {"stepTypeId": type_id, "stepTypeKey": type_key, "displayOrder": type_id},
+            "endCondition": {
+                "conditionTypeId": cond_id, "conditionTypeKey": cond_key,
+                "displayOrder": cond_id, "displayable": True,
+            },
+            "endConditionValue": cond_val,
+            "targetType": target["targetType"],
+            "targetValueOne": target.get("targetValueOne"),
+            "targetValueTwo": target.get("targetValueTwo"),
+        }
+        if child_step_id:
+            step["childStepId"] = child_step_id
+        steps.append({k: v for k, v in step.items() if v is not None})
+        order += 1
+
+    return steps, order
+
+
+def _generic_workout(s: dict) -> dict | None:
+    """Generic workout from explicit steps list.
+
+    Required fields:
+      sport: <sport key, e.g. running|cycling|swimming|...>
+      name:  <workout name shown on the watch>
+      steps: <list of step dicts>
+
+    Optional:
+      estimated_min: <number>  (default 60)
+    """
+    sport_key = s.get("sport")
+    if not sport_key:
+        print("  SKIP workout: missing 'sport' field", file=sys.stderr)
+        return None
+    try:
+        sport = _sport_for_key(sport_key)
+    except ValueError as e:
+        print(f"  SKIP workout: {e}", file=sys.stderr)
+        return None
+
+    name = s.get("name")
+    if not name:
+        print("  SKIP workout: missing 'name' field", file=sys.stderr)
+        return None
+
+    raw_steps = s.get("steps")
+    if not raw_steps:
+        print("  SKIP workout: missing 'steps' list", file=sys.stderr)
+        return None
+
+    built_steps, _ = _build_generic_steps(raw_steps, base_order=1)
+    if not built_steps:
+        print("  SKIP workout: no resolvable steps", file=sys.stderr)
+        return None
+
+    estimated_secs = int(float(s.get("estimated_min", 60)) * 60)
+    return {"name": name, "steps": built_steps, "estimated_secs": estimated_secs, "sport": sport}
+
+
 def _strength_workout(s: dict) -> dict | None:
     """Build a strength_training Garmin workout from a strength block dict.
 
@@ -871,6 +1039,11 @@ def session_to_workout(session: dict) -> list[dict]:
             specs.append(spec)
     elif stype == "race":
         return []  # races are not pre-programmed
+    elif stype == "workout":
+        spec = _generic_workout(session)
+        if spec:
+            specs.append(spec)
+        return specs
     else:
         print(f"  SKIP unknown type {stype!r}", file=sys.stderr)
         return []
