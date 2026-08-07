@@ -487,7 +487,7 @@ dates:
 sessions:
   - day: <Mo|Di|Mi|Do|Fr|Sa|So>
     date: "YYYY-MM-DD"
-    type: <rest|easy|tempo|long_run|intervals|race|strength|cycling>
+    type: <rest|easy|tempo|long_run|intervals|race|strength|cycling|workout>
     # type-specific fields (see below)
     goal: "<one sentence — why this session>"  # omit for rest
     optional: true   # only when session is optional
